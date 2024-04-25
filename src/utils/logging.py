@@ -19,6 +19,18 @@ class Logger:
         self.tb_logger = log_value
         self.use_tb = True
 
+    def setup_wandb(self, args):
+        import wandb
+        wandb.init(
+            name=args.wandb_run_name,
+            project="MARL Auctions",
+            config=vars(args),
+            save_code=True,  # optional
+        )
+
+        self.wandb_logger = wandb.log
+        self.use_wandb = True
+
     def setup_sacred(self, sacred_run_dict):
         self._run_obj = sacred_run_dict
         self.sacred_info = sacred_run_dict.info
@@ -29,6 +41,9 @@ class Logger:
 
         if self.use_tb:
             self.tb_logger(key, value, t)
+
+        if self.use_wandb:
+            self.wandb_logger({key: value}, step=t)
 
         if self.use_sacred and to_sacred:
             if key in self.sacred_info:

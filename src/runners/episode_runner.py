@@ -3,6 +3,7 @@ from functools import partial
 from components.episode_buffer import EpisodeBatch
 import numpy as np
 
+import wandb
 
 class EpisodeRunner:
 

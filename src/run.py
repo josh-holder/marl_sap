@@ -48,6 +48,10 @@ def run(_run, _config, _log):
         tb_exp_direc = os.path.join(tb_logs_direc, "{}").format(unique_token)
         logger.setup_tb(tb_exp_direc)
 
+    if args.use_wandb:
+        if args.wandb_run_name == None: args.wandb_run_name = unique_token
+        logger.setup_wandb(args)
+
     # sacred is on by default
     logger.setup_sacred(_run)
 
@@ -116,7 +120,7 @@ def run_sequential(args, logger):
         preprocess=preprocess,
         device="cpu" if args.buffer_cpu_only else args.device,
     )
-
+    
     # Setup multiagent controller here
     mac = mac_REGISTRY[args.mac](buffer.scheme, groups, args)
 

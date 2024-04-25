@@ -12,6 +12,9 @@ import torch as th
 from utils.logging import get_logger
 import yaml
 
+from gym.envs.registration import register
+import wandb
+
 from run import run
 
 SETTINGS['CAPTURE_MODE'] = "fd" # set to "no" if you want to see stdout/stderr in console
@@ -85,6 +88,26 @@ if __name__ == '__main__':
     # Load algorithm and env base configs
     env_config = _get_config(params, "--env-config", "envs")
     alg_config = _get_config(params, "--config", "algs")
+
+    benefits_by_state = []
+    benefits_by_state.append(np.array([[2, 3, 1], 
+                                       [1, 2, 3],
+                                       [3, 1, 2]]))
+    benefits_by_state.append(np.array([[0,   0.1, 0], 
+                                       [0,   0,   0.1],
+                                       [0.1, 0,   0]]))
+    benefits_by_state.append(np.array([[0,   0,   0.1], 
+                                       [0.1, 0,   0],
+                                       [0,   0.1, 0]]))
+
+    register(
+        id="simplest-env-v0",
+        entry_point="envs.simplest_env:SimplestEnv",
+        kwargs={
+                "benefits_by_state": benefits_by_state,
+            },
+    )
+
     # config_dict = {**config_dict, **env_config, **alg_config}
     config_dict = recursive_dict_update(config_dict, env_config)
     config_dict = recursive_dict_update(config_dict, alg_config)
@@ -93,7 +116,6 @@ if __name__ == '__main__':
         map_name = config_dict["env_args"]["map_name"]
     except:
         map_name = config_dict["env_args"]["key"]
-
 
     # now add all the config to sacred
     ex.add_config(config_dict)
