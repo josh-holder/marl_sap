@@ -70,6 +70,10 @@ def run(_run, _config, _log):
 
     print("Exiting script")
 
+    if args.use_wandb:
+        import wandb
+        wandb.finish()
+
     # Making sure framework really exits
     # os._exit(os.EX_OK)
 

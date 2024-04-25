@@ -7,6 +7,7 @@ class Logger:
         self.console_logger = console_logger
 
         self.use_tb = False
+        self.use_wandb = False
         self.use_sacred = False
         self.use_hdf = False
 
