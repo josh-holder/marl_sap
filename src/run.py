@@ -202,6 +202,7 @@ def run_sequential(args, logger):
             max_ep_t = episode_sample.max_t_filled()
             episode_sample = episode_sample[:, :max_ep_t]
 
+            #If the data from the replay buffer is on CPU, move it to GPU
             if episode_sample.device != args.device:
                 episode_sample.to(args.device)
 

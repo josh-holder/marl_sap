@@ -17,6 +17,8 @@ import wandb
 
 from run import run
 
+import cProfile
+
 SETTINGS['CAPTURE_MODE'] = "fd" # set to "no" if you want to see stdout/stderr in console
 logger = get_logger()
 
@@ -104,11 +106,9 @@ if __name__ == '__main__':
                                        [0.1, 0,   0],
                                        [0,   0.1, 0]]))
     
-    benefits_by_state = []
-    for _ in range(3):
-        benefits_by_state.append(np.random.rand(4,5))
-
-    print(config_dict)
+    # benefits_by_state = []
+    # for _ in range(3):
+    #     benefits_by_state.append(np.random.rand(4,5))
 
     register(
         id="simplest-env-v0",

@@ -25,8 +25,6 @@ class EpisodeRunner:
         self.log_train_stats_t = -1000000
 
     def setup(self, scheme, groups, preprocess, mac):
-        #If the buffer is to be stored on the CPU, each individual EpisodeBatch should also be stored on CPU
-        # device = "cpu" if self.args.buffer_cpu_only else self.args.device
         self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
                                  preprocess=preprocess, device=self.args.device)
         self.mac = mac

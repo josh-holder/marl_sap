@@ -6,7 +6,6 @@ import torch as th
 from torch.optim import Adam
 from components.standarize_stream import RunningMeanStd
 
-
 class QLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args

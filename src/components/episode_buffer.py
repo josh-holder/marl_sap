@@ -19,8 +19,6 @@ class EpisodeBatch:
         self.preprocess = {} if preprocess is None else preprocess
         self.device = device
 
-        print(f"Initialising EpisodeBatch with device {device}, batch size {batch_size}")
-
         if data is not None:
             self.data = data
         else:
@@ -108,6 +106,10 @@ class EpisodeBatch:
             if type(v) == list:
                 v = th.tensor(np.array(v), dtype=dtype, device=self.device)
             self._check_safe_view(v, target[k][_slices])
+
+            #If ReplayBuffer is on CPU and the model is on MPS, we need to ensure that the data is on the same device.
+            #Otherwise, we get a weird blit error. However, v.to("cpu") doesnt work, perhaps because v is in a specific computation graph.
+            if self.device == "cpu": v = th.tensor(v.data, device="cpu")
             target[k][_slices] = v.view_as(target[k][_slices])
 
             if k in self.preprocess:
@@ -221,10 +223,8 @@ class EpisodeBatch:
 
 class ReplayBuffer(EpisodeBatch):
     def __init__(self, scheme, groups, buffer_size, max_seq_length, preprocess=None, device="cpu"):
-        print("Init ReplayBuffer")
         super(ReplayBuffer, self).__init__(scheme, groups, buffer_size, max_seq_length, preprocess=preprocess, device=device)
         self.buffer_size = buffer_size  # same as self.batch_size but more explicit
-        print(f"Initialising ReplayBuffer with device {device}, buffer size {buffer_size}")
         self.buffer_index = 0
         self.episodes_in_buffer = 0
 
