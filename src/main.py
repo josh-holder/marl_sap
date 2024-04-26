@@ -78,7 +78,7 @@ def config_copy(config):
 
 if __name__ == '__main__':
     params = deepcopy(sys.argv)
-    # params = ['src/main.py', '--config=vdn', '--env-config=gymma', 'with', 'env_args.key=simplest-env-v0', 't_max=200000', 'use_mps=True', 'wandb_run_name=large_mps_test', 'buffer_cpu_only=True', 'use_cuda=False']
+    # params = ['src/main.py', '--config=sap', '--env-config=gymma', 'with', 'env_args.key=simplest-env-v0', 't_max=200000']
     th.set_num_threads(1)
 
     # Get the default configs from default.yaml

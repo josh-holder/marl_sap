@@ -42,6 +42,8 @@ class QLearner:
         else:
             device = "cpu"
             
+        self.n_agents = args.n_agents
+
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
         if self.args.standardise_rewards:
