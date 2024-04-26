@@ -31,7 +31,13 @@ class MADDPGLearner:
 
         self.last_target_update_episode = 0
 
-        device = "cuda" if args.use_cuda else "cpu"
+        if args.use_mps:
+            device = "mps"
+        elif args.use_cuda:
+            device = "cuda"
+        else:
+            device = "cpu"
+            
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
         if self.args.standardise_rewards:

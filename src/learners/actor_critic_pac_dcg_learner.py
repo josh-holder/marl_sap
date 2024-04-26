@@ -35,7 +35,13 @@ class PACDCGLearner:
         self.critic_training_steps = 0
         self.log_stats_t = -self.args.learner_log_interval - 1
 
-        device = "cuda" if args.use_cuda else "cpu"
+        if args.use_mps:
+            device = "mps"
+        elif args.use_cuda:
+            device = "cuda"
+        else:
+            device = "cpu"
+        
         self.ret_ms = RunningMeanStd(shape=(1, ), device=device)
         self.ret_ms_v = RunningMeanStd(shape=(self.n_agents, ), device=device)
 

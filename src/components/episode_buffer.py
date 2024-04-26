@@ -19,6 +19,8 @@ class EpisodeBatch:
         self.preprocess = {} if preprocess is None else preprocess
         self.device = device
 
+        print(f"Initialising EpisodeBatch with device {device}, batch size {batch_size}")
+
         if data is not None:
             self.data = data
         else:
@@ -209,6 +211,7 @@ class ReplayBuffer(EpisodeBatch):
     def __init__(self, scheme, groups, buffer_size, max_seq_length, preprocess=None, device="cpu"):
         super(ReplayBuffer, self).__init__(scheme, groups, buffer_size, max_seq_length, preprocess=preprocess, device=device)
         self.buffer_size = buffer_size  # same as self.batch_size but more explicit
+        print(f"Initialising ReplayBuffer with device {device}, buffer size {buffer_size}")
         self.buffer_index = 0
         self.episodes_in_buffer = 0
 

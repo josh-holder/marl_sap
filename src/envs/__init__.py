@@ -1,6 +1,7 @@
 from functools import partial
 import pretrained
-from smac.env import MultiAgentEnv, StarCraft2Env
+from smac.env import StarCraft2Env
+from envs.multiagentenv import MultiAgentEnv
 import sys
 import os
 import gym
@@ -78,10 +79,10 @@ class FlattenObservation(ObservationWrapper):
 
 
 class _GymmaWrapper(MultiAgentEnv):
-    def __init__(self, key, time_limit, pretrained_wrapper, seed, **kwargs):
+    def __init__(self, key, episode_step_limit, pretrained_wrapper, seed, **kwargs):
         self.original_env = gym.make(f"{key}", **kwargs)
-        self.episode_limit = time_limit
-        self._env = TimeLimit(self.original_env, max_episode_steps=time_limit)
+        self.episode_step_limit = episode_step_limit
+        self._env = TimeLimit(self.original_env, max_episode_steps=episode_step_limit)
         self._env = FlattenObservation(self._env)
 
         if pretrained_wrapper:

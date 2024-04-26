@@ -6,7 +6,6 @@ import numpy as np
 import wandb
 
 class EpisodeRunner:
-
     def __init__(self, args, logger):
         self.args = args
         self.logger = logger
@@ -14,7 +13,7 @@ class EpisodeRunner:
         assert self.batch_size == 1
 
         self.env = env_REGISTRY[self.args.env](**self.args.env_args)
-        self.episode_limit = self.env.episode_limit
+        self.episode_step_limit = self.env.episode_step_limit
         self.t = 0
 
         self.t_env = 0
@@ -28,7 +27,9 @@ class EpisodeRunner:
         self.log_train_stats_t = -1000000
 
     def setup(self, scheme, groups, preprocess, mac):
-        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_limit + 1,
+        #If the buffer is to be stored on the CPU, each individual EpisodeBatch should also be stored on CPU
+        # device = "cpu" if self.args.buffer_cpu_only else self.args.device
+        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
                                  preprocess=preprocess, device=self.args.device)
         self.mac = mac
 
@@ -51,16 +52,16 @@ class EpisodeRunner:
 
         terminated = False
         episode_return = 0
+        #Initialize RNN hidden state for each agent
         self.mac.init_hidden(batch_size=self.batch_size)
 
         while not terminated:
-
             pre_transition_data = {
                 "state": [self.env.get_state()],
                 "avail_actions": [self.env.get_avail_actions()],
                 "obs": [self.env.get_obs()]
             }
-
+            # print(f"pre_transition_data: {pre_transition_data}")
             self.batch.update(pre_transition_data, ts=self.t)
 
             # Pass the entire batch of experiences up till now to the agents
@@ -75,7 +76,7 @@ class EpisodeRunner:
             post_transition_data = {
                 "actions": actions,
                 "reward": [(reward,)],
-                "terminated": [(terminated != env_info.get("episode_limit", False),)],
+                "terminated": [(terminated != env_info.get("episode_step_limit", False),)],
             }
 
             self.batch.update(post_transition_data, ts=self.t)

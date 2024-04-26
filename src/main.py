@@ -76,18 +76,22 @@ def config_copy(config):
 
 if __name__ == '__main__':
     params = deepcopy(sys.argv)
+    # params = ['src/main.py', '--config=vdn', '--env-config=gymma', 'with', 'env_args.key=simplest-env-v0', 't_max=200000', 'use_mps=True', 'wandb_run_name=large_mps_test', 'buffer_cpu_only=True', 'use_cuda=False']
     th.set_num_threads(1)
 
-    # Get the defaults from default.yaml
+    # Get the default configs from default.yaml
     with open(os.path.join(os.path.dirname(__file__), "config", "default.yaml"), "r") as f:
         try:
             config_dict = yaml.load(f, Loader=yaml.FullLoader)
         except yaml.YAMLError as exc:
             assert False, "default.yaml error: {}".format(exc)
 
-    # Load algorithm and env base configs
+    # Load algorithm and env configs
     env_config = _get_config(params, "--env-config", "envs")
     alg_config = _get_config(params, "--config", "algs")
+    #Add the env and algorithm config to the default configs
+    config_dict = recursive_dict_update(config_dict, env_config)
+    config_dict = recursive_dict_update(config_dict, alg_config)
 
     benefits_by_state = []
     benefits_by_state.append(np.array([[2, 3, 1], 
@@ -99,18 +103,21 @@ if __name__ == '__main__':
     benefits_by_state.append(np.array([[0,   0,   0.1], 
                                        [0.1, 0,   0],
                                        [0,   0.1, 0]]))
+    
+    benefits_by_state = []
+    for _ in range(3):
+        benefits_by_state.append(np.random.rand(4,5))
+
+    print(config_dict)
 
     register(
         id="simplest-env-v0",
         entry_point="envs.simplest_env:SimplestEnv",
         kwargs={
                 "benefits_by_state": benefits_by_state,
+                "episode_step_limit": config_dict['env_args']['episode_step_limit'],
             },
     )
-
-    # config_dict = {**config_dict, **env_config, **alg_config}
-    config_dict = recursive_dict_update(config_dict, env_config)
-    config_dict = recursive_dict_update(config_dict, alg_config)
 
     try:
         map_name = config_dict["env_args"]["map_name"]

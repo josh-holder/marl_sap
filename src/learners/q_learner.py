@@ -36,7 +36,13 @@ class QLearner:
         self.last_target_update_step = 0
         self.log_stats_t = -self.args.learner_log_interval - 1
 
-        device = "cuda" if args.use_cuda else "cpu"
+        if args.use_mps:
+            device = "mps"
+        elif args.use_cuda:
+            device = "cuda"
+        else:
+            device = "cpu"
+            
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
         if self.args.standardise_rewards:
@@ -154,6 +160,13 @@ class QLearner:
         if self.mixer is not None:
             self.mixer.cuda()
             self.target_mixer.cuda()
+    
+    def mps(self):
+        self.mac.agent.to("mps")
+        self.target_mac.agent.to("mps")
+        if self.mixer is not None:
+            self.mixer.to("mps")
+            self.target_mixer.to("mps")
 
     def save_models(self, path):
         self.mac.save_models(path)

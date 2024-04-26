@@ -29,7 +29,13 @@ class COMALearner:
         self.agent_optimiser = Adam(params=self.agent_params, lr=args.lr)
         self.critic_optimiser = Adam(params=self.critic_params, lr=args.lr)
 
-        device = "cuda" if args.use_cuda else "cpu"
+        if args.use_mps:
+            device = "mps"
+        elif args.use_cuda:
+            device = "cuda"
+        else:
+            device = "cpu"
+            
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
         if self.args.standardise_rewards:

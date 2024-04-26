@@ -22,7 +22,9 @@ def run(_run, _config, _log):
     _config = args_sanity_check(_config, _log)
 
     args = SN(**_config)
-    args.device = "cuda" if args.use_cuda else "cpu"
+    if args.use_mps: args.device = "mps"
+    elif args.use_cuda: args.device = "cuda"
+    else: args.device = "cpu"
 
     # setup loggers
     logger = Logger(_log)
@@ -120,7 +122,7 @@ def run_sequential(args, logger):
         scheme,
         groups,
         args.buffer_size,
-        env_info["episode_limit"] + 1,
+        env_info["episode_step_limit"] + 1, #max_seq_length
         preprocess=preprocess,
         device="cpu" if args.buffer_cpu_only else args.device,
     )
@@ -134,8 +136,8 @@ def run_sequential(args, logger):
     # Learner
     learner = le_REGISTRY[args.learner](mac, buffer.scheme, logger, args)
 
-    if args.use_cuda:
-        learner.cuda()
+    if args.use_mps: learner.mps()
+    elif args.use_cuda: learner.cuda()
 
     if args.checkpoint_path != "":
 
@@ -144,7 +146,7 @@ def run_sequential(args, logger):
 
         if not os.path.isdir(args.checkpoint_path):
             logger.console_logger.info(
-                "Checkpoint directiory {} doesn't exist".format(args.checkpoint_path)
+                "Checkpoint directory {} doesn't exist".format(args.checkpoint_path)
             )
             return
 
@@ -252,9 +254,12 @@ def run_sequential(args, logger):
 
 
 def args_sanity_check(config, _log):
-
-    # set CUDA flags
-    # config["use_cuda"] = True # Use cuda whenever possible!
+    # set MPS and CUDA flags
+    if config["use_mps"] and not th.backends.mps.is_available():
+        config["use_mps"] = False
+        _log.warning(
+            "MPS flag use_mps was switched OFF automatically because no MPS devices are available!"
+        )
     if config["use_cuda"] and not th.cuda.is_available():
         config["use_cuda"] = False
         _log.warning(
