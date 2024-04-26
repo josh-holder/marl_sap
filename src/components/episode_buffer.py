@@ -109,7 +109,7 @@ class EpisodeBatch:
 
             #If ReplayBuffer is on CPU and the model is on MPS, we need to ensure that the data is on the same device.
             #Otherwise, we get a weird blit error. However, v.to("cpu") doesnt work, perhaps because v is in a specific computation graph.
-            if self.device == "cpu": v = th.tensor(v.data, device="cpu")
+            if v.device != "cpu" and self.device == "cpu": v = th.tensor(v.data, device="cpu")
             target[k][_slices] = v.view_as(target[k][_slices])
 
             if k in self.preprocess:
