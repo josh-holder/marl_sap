@@ -33,6 +33,7 @@ class EpisodeBatch:
         if preprocess is not None:
             for k in preprocess:
                 assert k in scheme
+                #Renames actions to actions_onehot
                 new_k = preprocess[k][0]
                 transforms = preprocess[k][1]
 
@@ -50,6 +51,7 @@ class EpisodeBatch:
                 if "episode_const" in self.scheme[k]:
                     self.scheme[new_k]["episode_const"] = self.scheme[k]["episode_const"]
 
+        #Add a filled key to the scheme
         assert "filled" not in scheme, '"filled" is a reserved key for masking.'
         scheme.update({
             "filled": {"vshape": (1,), "dtype": th.long},
@@ -58,17 +60,17 @@ class EpisodeBatch:
         for field_key, field_info in scheme.items():
             assert "vshape" in field_info, "Scheme must define vshape for {}".format(field_key)
             vshape = field_info["vshape"]
-            episode_const = field_info.get("episode_const", False)
-            group = field_info.get("group", None)
+            episode_const = field_info.get("episode_const", False) #if this is a field constant over the entire episode
+            group = field_info.get("group", None) #sets group and dtype to defaults if not found
             dtype = field_info.get("dtype", th.float32)
 
             if isinstance(vshape, int):
                 vshape = (vshape,)
 
-            if group:
+            if group: 
                 assert group in groups, "Group {} must have its number of members defined in _groups_".format(group)
                 shape = (groups[group], *vshape)
-            else:
+            else: #if group is None
                 shape = vshape
 
             if episode_const:
@@ -87,9 +89,10 @@ class EpisodeBatch:
         self.device = device
 
     def update(self, data, bs=slice(None), ts=slice(None), mark_filled=True):
-        slices = self._parse_slices((bs, ts))
+        #Adds data to the replay buffer in the appropriate location.
+        slices = self._parse_slices((bs, ts)) #make sure slices are accurate, converted to (ts, ts+1, None), etc.
         for k, v in data.items():
-            if k in self.data.transition_data:
+            if k in self.data.transition_data: #if the key is listed in the transition data to store in the replay buffer
                 target = self.data.transition_data
                 if mark_filled:
                     target["filled"][slices] = 1
@@ -115,6 +118,8 @@ class EpisodeBatch:
                 target[new_k][_slices] = v.view_as(target[new_k][_slices])
 
     def _check_safe_view(self, v, dest):
+        #Ensure that dimensions are correct, i.e. that the entry in the replay buffer
+        #you're trying to put v into is the same shape as v.
         idx = len(v.shape) - 1
         for s in dest.shape[::-1]:
             if v.shape[idx] != s:
@@ -175,6 +180,13 @@ class EpisodeBatch:
         return new_data
 
     def _parse_slices(self, items):
+        """
+        Convert items into a list of slices.
+
+        i.e. converts (slice(None, None, None), 2)
+
+        to [slice(None, None, None), slice(2, 3, None)]
+        """
         parsed = []
         # Only batch slice given, add full time slice
         if (isinstance(items, slice)  # slice a:b
@@ -209,6 +221,7 @@ class EpisodeBatch:
 
 class ReplayBuffer(EpisodeBatch):
     def __init__(self, scheme, groups, buffer_size, max_seq_length, preprocess=None, device="cpu"):
+        print("Init ReplayBuffer")
         super(ReplayBuffer, self).__init__(scheme, groups, buffer_size, max_seq_length, preprocess=preprocess, device=device)
         self.buffer_size = buffer_size  # same as self.batch_size but more explicit
         print(f"Initialising ReplayBuffer with device {device}, buffer size {buffer_size}")

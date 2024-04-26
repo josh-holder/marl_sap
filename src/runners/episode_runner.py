@@ -3,8 +3,6 @@ from functools import partial
 from components.episode_buffer import EpisodeBatch
 import numpy as np
 
-import wandb
-
 class EpisodeRunner:
     def __init__(self, args, logger):
         self.args = args
@@ -48,7 +46,7 @@ class EpisodeRunner:
         self.t = 0
 
     def run(self, test_mode=False):
-        self.reset()
+        self.reset() #empty batch, reset environment, t=0
 
         terminated = False
         episode_return = 0
@@ -61,7 +59,8 @@ class EpisodeRunner:
                 "avail_actions": [self.env.get_avail_actions()],
                 "obs": [self.env.get_obs()]
             }
-            # print(f"pre_transition_data: {pre_transition_data}")
+
+            #Add info to replay buffer that is available BEFORE the transition
             self.batch.update(pre_transition_data, ts=self.t)
 
             # Pass the entire batch of experiences up till now to the agents
@@ -79,6 +78,7 @@ class EpisodeRunner:
                 "terminated": [(terminated != env_info.get("episode_step_limit", False),)],
             }
 
+            #Add info to replay buffer that is available AFTER the transition
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
