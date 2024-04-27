@@ -119,6 +119,15 @@ if __name__ == '__main__':
             },
     )
 
+    # register(
+    #     id="benefit-obs-env-v0",
+    #     entry_point="envs.benefit_obs_env:SimplestEnv",
+    #     kwargs={
+    #             "benefits_by_state": benefits_by_state,
+    #             "episode_step_limit": config_dict['env_args']['episode_step_limit'],
+    #         },
+    # )
+
     try:
         map_name = config_dict["env_args"]["map_name"]
     except:

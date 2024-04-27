@@ -89,7 +89,6 @@ class SequentialAssignmentProblemSelector():
     
     def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
-        print("h")
         self.epsilon = self.schedule.eval(t_env)
 
         if test_mode:
