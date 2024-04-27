@@ -33,21 +33,19 @@ class SimplestEnv(Env):
 
     def step(self, actions):
         """ Returns reward, terminated, info """
-        total_reward = 0
-
         num_times_tasks_completed = np.zeros(self.num_tasks)
         for i in range(self.n_agents):
             num_times_tasks_completed[actions[i]] += 1
 
+        rewards = []
         for i in range(self.n_agents):
             chosen_task = actions[i]
-            total_reward += (self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task])
+            rewards.append(self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task])
 
         self.curr_state = actions[0] % self.num_states
         self.curr_step += 1
         
         nobs = [self.curr_state for _ in range(self.n_agents)]
-        rewards = [total_reward for _ in range(self.n_agents)]
 
         done = self.curr_step >= self.episode_step_limit
         dones = [done for _ in range(self.n_agents)]
