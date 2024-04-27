@@ -75,9 +75,7 @@ def config_copy(config):
     else:
         return deepcopy(config)
 
-
-if __name__ == '__main__':
-    params = deepcopy(sys.argv)
+def experiment_run(params):
     # params = ['src/main.py', '--config=sap', '--env-config=gymma', 'with', 'env_args.key=simplest-env-v0', 't_max=200000']
     th.set_num_threads(1)
 
@@ -119,19 +117,12 @@ if __name__ == '__main__':
             },
     )
 
-    # register(
-    #     id="benefit-obs-env-v0",
-    #     entry_point="envs.benefit_obs_env:SimplestEnv",
-    #     kwargs={
-    #             "benefits_by_state": benefits_by_state,
-    #             "episode_step_limit": config_dict['env_args']['episode_step_limit'],
-    #         },
-    # )
-
     try:
         map_name = config_dict["env_args"]["map_name"]
     except:
         map_name = config_dict["env_args"]["key"]
+
+    config_dict["env_args"]["benefits_by_state"] = benefits_by_state
 
     # now add all the config to sacred
     ex.add_config(config_dict)
@@ -150,5 +141,19 @@ if __name__ == '__main__':
     ex.observers.append(FileStorageObserver.create(file_obs_path))
     # ex.observers.append(MongoObserver())
 
-    ex.run_commandline(params)
+    for exp_num in range(num_repeats):
+        print(f"Starting experiment {exp_num+1}/{num_repeats}")
+        ex.run_commandline(params)
 
+if __name__ == '__main__':
+    params = deepcopy(sys.argv)
+
+    #Determine if we want to repeat the experiment
+    num_repeats = 1
+    param_copy = deepcopy(params)
+    for p in param_copy:
+        if p.startswith("--repeat"):
+            num_repeats = int(p.split("=")[1])
+            params.remove(p)
+
+    experiment_run(params)
