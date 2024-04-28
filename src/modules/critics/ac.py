@@ -17,7 +17,10 @@ class ACCritic(nn.Module):
         # Set up network layers
         self.fc1 = nn.Linear(input_shape, args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
-        self.fc3 = nn.Linear(args.hidden_dim, 1)
+        if not self.args.env_args.get("bids_as_actions", False):
+            self.fc3 = nn.Linear(args.hidden_dim, 1)
+        else:
+            self.fc3 = nn.Linear(args.hidden_dim, args.n_actions)
 
     def forward(self, batch, t=None):
         inputs, bs, max_t = self._build_inputs(batch, t=t)

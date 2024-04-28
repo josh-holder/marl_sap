@@ -105,7 +105,6 @@ def run_sequential(args, logger):
     # Default/Base scheme
     bids_as_actions = args.env_args.get("bids_as_actions", False)
     if not bids_as_actions:
-        print("NOT BIDS AS ACTIONS")
         scheme = {
             "state": {"vshape": env_info["state_shape"]},
             "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
@@ -120,12 +119,11 @@ def run_sequential(args, logger):
         }
         preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
 
-    else: #if bids_as_actions, actions space is 2*n_actions (mu and sigma)
-        print("BIDS AS ACTIONS")
+    else: #if bids_as_actions, actions space is n_actions (mu for each task)
         scheme = {
             "state": {"vshape": env_info["state_shape"]},
             "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
-            "actions": {"vshape": (env_info["n_actions"],), "group": "agents"}, #change to 2*n_tasks, float
+            "actions": {"vshape": (env_info["n_actions"],), "group": "agents"}, #change to n_tasks, float
             "avail_actions": {
                 "vshape": (env_info["n_actions"],),
                 "group": "agents",

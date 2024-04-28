@@ -35,13 +35,10 @@ class BenefitObsEnv(Env):
         self.bids_as_actions = bids_as_actions
         if self.bids_as_actions:
             #Action space is a bid for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(2*self.num_tasks,))] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.num_tasks,))] * self.n_agents))
         else:
             #Action space is one action for each task
             self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.num_tasks)] * self.n_agents))
-
-        print("ACTIONS SPACE")
-        print(self.action_space)
 
         #Observation space is just what state the game is in + the benefits for the agent
         self.obs_space_size = self.num_states + self.num_tasks 
@@ -53,16 +50,7 @@ class BenefitObsEnv(Env):
         Returns reward, terminated, info. 
         """
         if self.bids_as_actions:
-            #Add all actions into a matrix
-            print("ACTIONS", actions)
-            actions = np.stack(actions, axis=0)
-
-            #Sample a bid from the actions
-            means = actions[:, self.num_tasks]
-            stds = actions[:, self.num_tasks:]
-            bids = np.random.normal(loc=means, scale=stds)
-
-            _, assignments = scipy.optimize.linear_sum_assignment(bids, maximize=True)
+            _, assignments = scipy.optimize.linear_sum_assignment(actions, maximize=True)
         else:
             assignments = [int(a) for a in actions]
 
@@ -137,10 +125,7 @@ class BenefitObsEnv(Env):
 
     def get_total_actions(self):
         """ Returns the total number of actions an agent could ever take """
-        if self.bids_as_actions:
-            return 2*self.num_tasks
-        else:
-            return self.num_tasks
+        return self.num_tasks
     
     def get_stats(self):
         return {}

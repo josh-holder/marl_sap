@@ -122,3 +122,27 @@ class PassthroughActionSelector():
         return agent_inputs.detach() #we no longer need gradients once we convert NN outputs to actions, so detach
     
 REGISTRY["passthrough"] = PassthroughActionSelector
+
+class ContinuousActionSelector():
+    def __init__(self, args):
+        self.args = args
+
+        self.schedule = DecayThenFlatSchedule(args.epsilon_start, args.epsilon_finish, args.epsilon_anneal_time,
+                                              decay="linear")
+        self.variance = self.schedule.eval(0)
+
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+        if test_mode:
+            self.variance = self.args.evaluation_epsilon
+
+            picked_actions = th.normal(agent_inputs, self.variance)
+        else:
+            self.variance = self.schedule.eval(t_env)
+
+            picked_actions = th.normal(agent_inputs, self.variance)
+        return picked_actions.detach()
+    
+    def action_log_prob(self, actions, old_agent_inputs):
+        return th.distributions.Normal(old_agent_inputs, self.variance).log_prob(actions)
+    
+REGISTRY["continuous"] = ContinuousActionSelector

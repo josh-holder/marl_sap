@@ -71,10 +71,6 @@ class PPOLearner:
         old_pi = old_mac_out
         old_pi[mask == 0] = 1.0
 
-        print(old_pi.shape)
-        #Need to figure out how to write this in the new formulation.
-        #What does it mean to constrain the policy to be similar to the old policy, now that we're
-        #not taking individual actions, but rather outputting actions.
         old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
         old_log_pi_taken = th.log(old_pi_taken + 1e-10)
 
