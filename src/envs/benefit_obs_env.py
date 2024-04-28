@@ -6,11 +6,13 @@ from gym import Env
 import gym
 from gym.utils import seeding
 import numpy as np
+import scipy.optimize
 
 class BenefitObsEnv(Env):
     def __init__(self,
                  benefits_by_state,
                  episode_step_limit,
+                 bids_as_actions=False,
                  seed=None,
                  key=None):
         self.logger = logging.getLogger(__name__)
@@ -30,8 +32,16 @@ class BenefitObsEnv(Env):
 
         self.curr_step = 0
 
-        #Action space is one action for each task
-        self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.num_tasks)] * self.n_agents))
+        self.bids_as_actions = bids_as_actions
+        if self.bids_as_actions:
+            #Action space is a bid for each task
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(2*self.num_tasks,))] * self.n_agents))
+        else:
+            #Action space is one action for each task
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.num_tasks)] * self.n_agents))
+
+        print("ACTIONS SPACE")
+        print(self.action_space)
 
         #Observation space is just what state the game is in + the benefits for the agent
         self.obs_space_size = self.num_states + self.num_tasks 
@@ -42,18 +52,30 @@ class BenefitObsEnv(Env):
         Input is actions in Discrete form.
         Returns reward, terminated, info. 
         """
-        actions = [int(a) for a in actions]
+        if self.bids_as_actions:
+            #Add all actions into a matrix
+            print("ACTIONS", actions)
+            actions = np.stack(actions, axis=0)
+
+            #Sample a bid from the actions
+            means = actions[:, self.num_tasks]
+            stds = actions[:, self.num_tasks:]
+            bids = np.random.normal(loc=means, scale=stds)
+
+            _, assignments = scipy.optimize.linear_sum_assignment(bids, maximize=True)
+        else:
+            assignments = [int(a) for a in actions]
 
         num_times_tasks_completed = np.zeros(self.num_tasks)
         for i in range(self.n_agents):
-            num_times_tasks_completed[actions[i]] += 1
+            num_times_tasks_completed[assignments[i]] += 1
 
         total_reward = 0
         for i in range(self.n_agents):
-            chosen_task = actions[i]
+            chosen_task = assignments[i]
             total_reward += self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task]
 
-        self.curr_state = actions[0] % self.num_states
+        self.curr_state = assignments[0] % self.num_states
         self.curr_state_onehot = np.zeros(self.num_states)
         self.curr_state_onehot[self.curr_state] = 1
 
@@ -116,6 +138,9 @@ class BenefitObsEnv(Env):
     def get_total_actions(self):
         """ Returns the total number of actions an agent could ever take """
         return self.num_tasks
+    
+    def get_stats(self):
+        return {}
 
     def get_env_info(self):
         env_info = {"state_shape": self.get_state_size(),

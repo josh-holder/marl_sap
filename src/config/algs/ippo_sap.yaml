@@ -1,7 +1,6 @@
-# --- IPPO specific parameters ---
+# --- IPPO SAP specific parameters ---
 
-action_selector: "soft_policies"
-mask_before_softmax: True
+action_selector: "passthrough"
 
 runner: "parallel"
 
@@ -15,7 +14,7 @@ target_update_interval_or_tau: 0.01
 
 lr: 0.0003
 
-obs_agent_id: False #we get benefit info directly, so we don't need agent id
+obs_agent_id: False
 obs_last_action: False
 obs_individual_obs: False
 
@@ -25,11 +24,11 @@ learner: "ppo_learner"
 entropy_coef: 0.01
 standardise_returns: False
 standardise_rewards: True
-use_rnn: True
+use_rnn: False
 q_nstep: 5 # 1 corresponds to normal r + gammaV
 critic_type: "ac_critic"
 epochs: 4
 eps_clip: 0.2
-name: "ippo"
+name: "ippo_sap"
 
 t_max: 20050000

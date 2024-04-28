@@ -113,3 +113,12 @@ class SequentialAssignmentProblemSelector():
         return picked_actions
     
 REGISTRY["sap"] = SequentialAssignmentProblemSelector
+
+class PassthroughActionSelector():
+    def __init__(self, args):
+        self.args = args
+
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+        return agent_inputs.detach() #we no longer need gradients once we convert NN outputs to actions, so detach
+    
+REGISTRY["passthrough"] = PassthroughActionSelector

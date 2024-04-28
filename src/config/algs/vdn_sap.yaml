@@ -1,4 +1,4 @@
-# --- SAP specific parameters ---
+# --- VDN SAP specific parameters ---
 
 # use epsilon greedy action selector
 action_selector: "sap"

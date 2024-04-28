@@ -31,7 +31,7 @@ class ParallelRunner:
 
         self.parent_conns[0].send(("get_env_info", None))
         self.env_info = self.parent_conns[0].recv()
-        self.episode_limit = self.env_info["episode_limit"]
+        self.episode_step_limit = self.env_info["episode_step_limit"]
 
         self.t = 0
 
@@ -45,7 +45,7 @@ class ParallelRunner:
         self.log_train_stats_t = -100000
 
     def setup(self, scheme, groups, preprocess, mac):
-        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_limit + 1,
+        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
                                  preprocess=preprocess, device=self.args.device)
         self.mac = mac
         self.scheme = scheme
@@ -153,7 +153,7 @@ class ParallelRunner:
                     env_terminated = False
                     if data["terminated"]:
                         final_env_infos.append(data["info"])
-                    if data["terminated"] and not data["info"].get("episode_limit", False):
+                    if data["terminated"] and not data["info"].get("episode_step_limit", False):
                         env_terminated = True
                     terminated[idx] = data["terminated"]
                     post_transition_data["terminated"].append((env_terminated,))

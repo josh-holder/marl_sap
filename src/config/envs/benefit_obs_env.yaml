@@ -3,6 +3,7 @@ env: "benefit_obs_env"
 env_args:
   key: null
   episode_step_limit: 50
+  bids_as_actions: False
 
 test_greedy: True
 test_nepisode: 100
