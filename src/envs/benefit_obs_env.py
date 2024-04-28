@@ -133,11 +133,14 @@ class BenefitObsEnv(Env):
 
     def get_avail_agent_actions(self, agent_id):
         """ Returns the available actions for agent_id (all actions are always available)"""
-        return [1] * self.num_tasks
+        return [1] * self.get_total_actions()
 
     def get_total_actions(self):
         """ Returns the total number of actions an agent could ever take """
-        return self.num_tasks
+        if self.bids_as_actions:
+            return 2*self.num_tasks
+        else:
+            return self.num_tasks
     
     def get_stats(self):
         return {}

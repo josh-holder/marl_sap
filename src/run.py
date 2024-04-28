@@ -103,20 +103,40 @@ def run_sequential(args, logger):
     args.state_shape = env_info["state_shape"]
 
     # Default/Base scheme
-    scheme = {
-        "state": {"vshape": env_info["state_shape"]},
-        "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
-        "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
-        "avail_actions": {
-            "vshape": (env_info["n_actions"],),
-            "group": "agents",
-            "dtype": th.int,
-        },
-        "reward": {"vshape": (1,)},
-        "terminated": {"vshape": (1,), "dtype": th.uint8},
-    }
+    bids_as_actions = args.env_args.get("bids_as_actions", False)
+    if not bids_as_actions:
+        print("NOT BIDS AS ACTIONS")
+        scheme = {
+            "state": {"vshape": env_info["state_shape"]},
+            "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
+            "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
+            "avail_actions": {
+                "vshape": (env_info["n_actions"],),
+                "group": "agents",
+                "dtype": th.int,
+            },
+            "reward": {"vshape": (1,)},
+            "terminated": {"vshape": (1,), "dtype": th.uint8},
+        }
+        preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
+
+    else: #if bids_as_actions, actions space is 2*n_actions (mu and sigma)
+        print("BIDS AS ACTIONS")
+        scheme = {
+            "state": {"vshape": env_info["state_shape"]},
+            "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
+            "actions": {"vshape": (env_info["n_actions"],), "group": "agents"}, #change to 2*n_tasks, float
+            "avail_actions": {
+                "vshape": (env_info["n_actions"],),
+                "group": "agents",
+                "dtype": th.int,
+            },
+            "reward": {"vshape": (1,)},
+            "terminated": {"vshape": (1,), "dtype": th.uint8},
+        }
+        preprocess = {}
+
     groups = {"agents": args.n_agents}
-    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
 
     buffer = ReplayBuffer(
         scheme,
