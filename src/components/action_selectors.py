@@ -132,13 +132,13 @@ class ContinuousActionSelector():
         self.variance = self.schedule.eval(0)
 
     def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+        if getattr(self.args, "softmax_agent_inputs", False): agent_inputs = th.softmax(agent_inputs, dim=1)
+
         if test_mode:
             self.variance = self.args.evaluation_epsilon
-
             picked_actions = th.normal(agent_inputs, self.variance)
         else:
             self.variance = self.schedule.eval(t_env)
-
             picked_actions = th.normal(agent_inputs, self.variance)
         return picked_actions.detach()
     

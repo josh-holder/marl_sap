@@ -5,6 +5,7 @@ env_args:
 
 # use continuous action selector with variance of epsilon
 action_selector: "continuous"
+softmax_agent_inputs: True #softmax agent bets before selection
 epsilon_start: 0.3
 epsilon_finish: 0.05
 epsilon_anneal_time: 50000
