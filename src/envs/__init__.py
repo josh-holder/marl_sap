@@ -3,6 +3,7 @@ import pretrained
 from smac.env import StarCraft2Env
 from envs.multiagentenv import MultiAgentEnv
 from envs.benefit_obs_env import BenefitObsEnv
+from envs.mock_constellation_env import MockConstellationEnv
 import sys
 import os
 import gym
@@ -19,6 +20,7 @@ def env_fn(env, **kwargs) -> MultiAgentEnv:
 REGISTRY = {}
 REGISTRY["sc2"] = partial(env_fn, env=StarCraft2Env)
 REGISTRY["benefit_obs_env"] = partial(env_fn, env=BenefitObsEnv)
+REGISTRY["mock_constellation_env"] = partial(env_fn, env=MockConstellationEnv)
 
 if sys.platform == "linux":
     os.environ.setdefault(

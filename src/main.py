@@ -11,6 +11,7 @@ import sys
 import torch as th
 from utils.logging import get_logger
 import yaml
+import logging
 
 from gym.envs.registration import register
 import wandb
@@ -75,7 +76,19 @@ def config_copy(config):
     else:
         return deepcopy(config)
 
-def experiment_run(params):
+def experiment_run(params, explicit_dict_items=None, verbose=True):
+    if not verbose: 
+        ex.logger.setLevel(logging.ERROR)
+        sys.stdout = open(os.devnull, 'w')
+
+    #Determine if we want to repeat the experiment
+    num_repeats = 1
+    param_copy = deepcopy(params)
+    for p in param_copy:
+        if p.startswith("--repeat"):
+            num_repeats = int(p.split("=")[1])
+            params.remove(p)
+
     # params = ['src/main.py', '--config=sap', '--env-config=gymma', 'with', 'env_args.key=simplest-env-v0', 't_max=200000']
     th.set_num_threads(1)
 
@@ -93,49 +106,43 @@ def experiment_run(params):
     config_dict = recursive_dict_update(config_dict, env_config)
     config_dict = recursive_dict_update(config_dict, alg_config)
 
-    benefits_by_state = []
-    benefits_by_state.append(np.array([[2, 3, 1], 
-                                       [1, 2, 3],
-                                       [3, 1, 2]]))
-    benefits_by_state.append(np.array([[0,   0.1, 0], 
-                                       [0,   0,   0.1],
-                                       [0.1, 0,   0]]))
-    benefits_by_state.append(np.array([[0,   0,   0.1], 
-                                       [0.1, 0,   0],
-                                       [0,   0.1, 0]]))
-    
-    # benefits_by_state = []
-    # for _ in range(3):
-    #     benefits_by_state.append(np.random.rand(4,5))
+    if config_dict['env'] == 'benefit_obs_env':
+        benefits_by_state = []
+        benefits_by_state.append(np.array([[2, 3, 1], 
+                                        [1, 2, 3],
+                                        [3, 1, 2]]))
+        benefits_by_state.append(np.array([[0,   0.1, 0], 
+                                        [0,   0,   0.1],
+                                        [0.1, 0,   0]]))
+        benefits_by_state.append(np.array([[0,   0,   0.1], 
+                                        [0.1, 0,   0],
+                                        [0,   0.1, 0]]))
+        config_dict["env_args"]["benefits_by_state"] = benefits_by_state
+    elif config_dict['env'] == 'simplest-env-v0':
+        register(
+            id="simplest-env-v0",
+            entry_point="envs.simplest_env:SimplestEnv",
+            kwargs={
+                    "benefits_by_state": benefits_by_state,
+                    "episode_step_limit": config_dict['env_args']['episode_step_limit'],
+                },
+        )
 
-    register(
-        id="simplest-env-v0",
-        entry_point="envs.simplest_env:SimplestEnv",
-        kwargs={
-                "benefits_by_state": benefits_by_state,
-                "episode_step_limit": config_dict['env_args']['episode_step_limit'],
-            },
-    )
-
-    try:
-        map_name = config_dict["env_args"]["map_name"]
-    except:
-        map_name = config_dict["env_args"]["key"]
-
-    config_dict["env_args"]["benefits_by_state"] = benefits_by_state
+    #Add items from explicit_dict_items (hardcoded for 2 levels of dicts)
+    if explicit_dict_items is not None:
+        for k, v in explicit_dict_items.items():
+            if type(v) == dict:
+                for k2, v2 in v.items():
+                    config_dict[k][k2] = v2
+            else:
+                config_dict[k] = v
 
     # now add all the config to sacred
     ex.add_config(config_dict)
 
-    for param in params:
-        if param.startswith("env_args.map_name"):
-            map_name = param.split("=")[1]
-        elif param.startswith("env_args.key"):
-            map_name = param.split("=")[1]
-
     # Save to disk by default for sacred
     logger.info("Saving to FileStorageObserver in results/sacred.")
-    file_obs_path = os.path.join(results_path, f"sacred/{config_dict['name']}/{map_name}")
+    file_obs_path = os.path.join(results_path, f"sacred/{config_dict['name']}")
 
     # ex.observers.append(MongoObserver(db_name="marlbench")) #url='172.31.5.187:27017'))
     ex.observers.append(FileStorageObserver.create(file_obs_path))
@@ -143,17 +150,14 @@ def experiment_run(params):
 
     for exp_num in range(num_repeats):
         print(f"Starting experiment {exp_num+1}/{num_repeats}")
-        ex.run_commandline(params)
+        experiment_object = ex.run_commandline(params)
+
+    #set stdout back to normal
+    if not verbose: sys.stdout = sys.__stdout__
+
+    return experiment_object
 
 if __name__ == '__main__':
     params = deepcopy(sys.argv)
-
-    #Determine if we want to repeat the experiment
-    num_repeats = 1
-    param_copy = deepcopy(params)
-    for p in param_copy:
-        if p.startswith("--repeat"):
-            num_repeats = int(p.split("=")[1])
-            params.remove(p)
 
     experiment_run(params)

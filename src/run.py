@@ -29,18 +29,16 @@ def run(_run, _config, _log):
     # setup loggers
     logger = Logger(_log)
 
-    _log.info("Experiment Parameters:")
-    experiment_params = pprint.pformat(_config, indent=4, width=1)
-    _log.info("\n\n" + experiment_params + "\n")
+    #Don't print config if you're passing in benefits_over_time, because its too large printed
+    if _config["env_args"].get("benefits_over_time", None) is None:
+        _log.info("Experiment Parameters:")
+        experiment_params = pprint.pformat(_config, indent=4, width=1)
+        _log.info("\n\n" + experiment_params + "\n")
 
     # configure tensorboard logger
     # unique_token = "{}__{}".format(args.name, datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
 
-    try:
-        map_name = _config["env_args"]["map_name"]
-    except:
-        map_name = _config["env_args"]["key"]
-    unique_token = f"{_config['name']}_seed{_config['seed']}_{map_name}_{datetime.datetime.now()}"
+    unique_token = f"{_config['name']}_seed{_config['seed']}_{datetime.datetime.now()}"
 
     args.unique_token = unique_token
     if args.use_tensorboard:

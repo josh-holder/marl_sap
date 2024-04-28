@@ -29,4 +29,4 @@ double_q: True
 use_rnn: False
 mixer: "vdn"
 
-name: "vdn"
+name: "vdn_sap"

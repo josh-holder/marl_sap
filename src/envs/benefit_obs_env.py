@@ -63,6 +63,7 @@ class BenefitObsEnv(Env):
             chosen_task = assignments[i]
             total_reward += self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task]
 
+        #Transition into the state according to the first agents assignment.
         self.curr_state = assignments[0] % self.num_states
         self.curr_state_onehot = np.zeros(self.num_states)
         self.curr_state_onehot[self.curr_state] = 1
