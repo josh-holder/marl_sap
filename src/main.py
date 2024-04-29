@@ -39,7 +39,9 @@ def my_main(_run, _config, _log):
     config['env_args']['seed'] = config["seed"]
 
     # run the framework
-    run(_run, config, _log)
+    actions, reward = run(_run, config, _log)
+
+    return actions, float(reward)
 
 
 def _get_config(params, arg_name, subfolder):

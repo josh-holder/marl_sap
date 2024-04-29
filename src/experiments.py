@@ -1,6 +1,7 @@
 from main import experiment_run
 from copy import deepcopy
 import numpy as np
+import matplotlib.pyplot as plt
 import sys
 sys.path.append('/Users/joshholder/code/satellite-constellation')
 
@@ -11,6 +12,7 @@ from algorithms.solve_w_haal import solve_w_haal
 from algorithms.solve_randomly import solve_randomly
 from algorithms.solve_greedily import solve_greedily
 from algorithms.solve_wout_handover import solve_wout_handover
+from common.methods import *
 
 def mock_constellation_test():
     n = 10
@@ -19,7 +21,7 @@ def mock_constellation_test():
     L = 3
     lambda_ = 0.5
 
-    np.random.seed(42)
+    np.random.seed(43)
     sat_prox_mat = generate_benefits_over_time(n, m, T, 3, 6)
     
     #EVALUATE VDN
@@ -39,7 +41,9 @@ def mock_constellation_test():
     }
     
     vdn_exp = experiment_run(params, explicit_dict_items, verbose=False)
-    vdn_val = vdn_exp.info['test_return_mean'][0]
+    vdn_val = vdn_exp.result[1]
+    vdn_actions = vdn_exp.result[0]
+    vdn_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in vdn_actions]
     
     #EVALUATE AUCTION VDN
     print('Evaluating Auction VDN')
@@ -58,27 +62,39 @@ def mock_constellation_test():
     }
     
     vdn_sap_exp = experiment_run(params, explicit_dict_items, verbose=False)
-    vdn_sap_val = vdn_sap_exp.info['test_return_mean'][0]
+    vdn_sap_val = vdn_sap_exp.result[1]
+    vdn_sap_actions = vdn_sap_exp.result[0]
+    vdn_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in vdn_sap_actions]
     
     print('VDN:', vdn_val)
     print('VDN SAP:', vdn_sap_val)
-
     #EVALUATE CLASSIC ALGORITHMS
     env = MockConstellationEnv(n, m, T, L, lambda_, sat_prox_mat=sat_prox_mat)
-    _, haal_val = solve_w_haal(env, L, verbose=True)
+    haal_assigns, haal_val = solve_w_haal(env, L, verbose=False)
     print('HAAL:', haal_val)
 
     env.reset()
-    _, random_val = solve_randomly(env)
+    random_assigns, random_val = solve_randomly(env)
     print('Random:', random_val)
 
     env.reset()
-    _, greedy_val = solve_greedily(env)
+    greedy_assigns, greedy_val = solve_greedily(env)
     print('Greedy:', greedy_val)
 
     env.reset()
-    _, wout_handover_val = solve_wout_handover(env)
-    print('Without Handover:', wout_handover_val)
+    nha_assigns, nha_val = solve_wout_handover(env)
+    print('Without Handover:', nha_val)
+
+    values = [vdn_val, vdn_sap_val, haal_val, random_val, greedy_val, nha_val]
+    handovers = [calc_handovers_generically(a) for a in [vdn_assigns, vdn_sap_assigns, haal_assigns, random_assigns, greedy_assigns, nha_assigns]]
+    
+    alg_names = ['VDN', 'VDN SAP', 'HAAL', 'Random', 'Greedy', 'Without Handover']
+    plt.bar(alg_names, values)
+    plt.show()
+
+    plt.bar(alg_names, handovers)
+    plt.show()
+
 
 if __name__ == "__main__":
     mock_constellation_test()
