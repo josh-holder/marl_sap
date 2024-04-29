@@ -5,8 +5,9 @@ from modules.mixers.qmix import QMixer
 import torch as th
 from torch.optim import Adam
 from components.standarize_stream import RunningMeanStd
+import scipy.optimize
 
-class QLearner:
+class SAPQLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
         self.mac = mac
@@ -43,6 +44,7 @@ class QLearner:
             device = "cpu"
             
         self.n_agents = args.n_agents
+        self.n_actions = args.n_actions
 
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
@@ -90,10 +92,18 @@ class QLearner:
             # Get actions that maximise live Q (for double q-learning)
             mac_out_detach = mac_out.clone().detach()
             mac_out_detach[avail_actions == 0] = -9999999
-            cur_max_actions = mac_out_detach[:, 1:].max(dim=3, keepdim=True)[1]
-            target_max_qvals = th.gather(target_mac_out, 3, cur_max_actions).squeeze(3)
+            
+            target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_actions), device=mac_out.device)
+            for bn in range(batch.batch_size):
+                for t in range(1,batch.max_seq_length): #want targets to be from t+1, so iterate from 1 to max_seq_length-1
+                    _, col_ind = scipy.optimize.linear_sum_assignment(mac_out_detach[bn, t, :, :], maximize=True)
+                    target_max_qvals[bn, t-1, :] = th.tensor(col_ind)
         else:
-            target_max_qvals = target_mac_out.max(dim=3)[0]
+            target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_actions), device=mac_out.device)
+            for bn in range(batch.batch_size):
+                for t in range(batch.max_seq_length-1):
+                    _, col_ind = scipy.optimize.linear_sum_assignment(target_mac_out[bn, t, :, :].detach(), maximize=True)
+                    target_max_qvals[bn, t, :] = th.tensor(col_ind)
 
         # Mix
         if self.mixer is not None:

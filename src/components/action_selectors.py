@@ -105,7 +105,7 @@ class SequentialAssignmentProblemSelector():
                 picked_actions[batch, :] = th.randperm(n_agents)
             else:
                 # Solve the assignment problem for each batch, converting to numpy first
-                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().numpy()
+                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().numpy()# + np.random.normal(0, self.epsilon, (n_agents, n_actions))
 
                 _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values, maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)

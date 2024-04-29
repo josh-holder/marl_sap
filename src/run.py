@@ -8,11 +8,12 @@ from types import SimpleNamespace as SN
 from utils.logging import Logger
 from utils.timehelper import time_left, time_str
 from os.path import dirname, abspath
+import numpy as np
 
 from learners import REGISTRY as le_REGISTRY
 from runners import REGISTRY as r_REGISTRY
 from controllers import REGISTRY as mac_REGISTRY
-from components.episode_buffer import ReplayBuffer
+from components.episode_buffer import ReplayBuffer, EpisodeBatch
 from components.transforms import OneHot
 
 
@@ -242,6 +243,48 @@ def run_sequential(args, logger):
             last_test_T = runner.t_env
             for _ in range(n_test_runs):
                 runner.run(test_mode=True)
+
+            # test_obs = [[1, 0, 0, 2, 3, 1],
+            #             [1, 0, 0, 1, 2, 3],
+            #             [1, 0, 0, 3, 2, 1]]
+            # test_data = {
+            #     "state": [np.concatenate(test_obs, axis=0).astype(np.float32)],
+            #     "avail_actions": [np.ones(args.n_actions) for i in range(args.n_agents)],
+            #     "obs": test_obs
+            # }
+            # test_batch = EpisodeBatch(scheme, groups, 1, 1)
+            # test_batch.update(test_data, ts=0)
+            # qs = runner.mac.forward(test_batch, t=0)
+            # print("QS state 0")
+            # print(qs)
+
+            # test_obs = [[0, 1, 0, 0, 0.1, 0],
+            #             [0, 1, 0, 0, 0, 0.1],
+            #             [0, 1, 0, 0.1, 0, 0]]
+            # test_data = {
+            #     "state": [np.concatenate(test_obs, axis=0).astype(np.float32)],
+            #     "avail_actions": [np.ones(args.n_actions) for i in range(args.n_agents)],
+            #     "obs": test_obs
+            # }
+            # test_batch = EpisodeBatch(scheme, groups, 1, 1)
+            # test_batch.update(test_data, ts=0)
+            # qs = runner.mac.forward(test_batch, t=0)
+            # print("QS state 1")
+            # print(qs)
+
+            # test_obs = [[0, 0, 1, 0, 0, 0.1],
+            #             [0, 0, 1, 0.1, 0, 0],
+            #             [0, 0, 1, 0, 0.1, 0]]
+            # test_data = {
+            #     "state": [np.concatenate(test_obs, axis=0).astype(np.float32)],
+            #     "avail_actions": [np.ones(args.n_actions) for i in range(args.n_agents)],
+            #     "obs": test_obs
+            # }
+            # test_batch = EpisodeBatch(scheme, groups, 1, 1)
+            # test_batch.update(test_data, ts=0)
+            # qs = runner.mac.forward(test_batch, t=0)
+            # print("QS state 2")
+            # print(qs)
 
         if args.save_model and (
             runner.t_env - model_save_time >= args.save_model_interval
