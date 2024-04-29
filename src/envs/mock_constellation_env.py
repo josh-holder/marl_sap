@@ -27,7 +27,7 @@ class MockConstellationEnv(Env):
         self.num_tasks = num_tasks
         self.episode_step_limit = episode_step_limit
 
-        self.benefit_fn = simple_handover_pen_benefit_fn
+        self.benefit_fn = meaningful_task_handover_pen_benefit_fn
         self.benefit_info = benefit_info
 
         if sat_prox_mat is None:
@@ -168,7 +168,7 @@ class MockConstellationEnv(Env):
                     "episode_step_limit": self.episode_step_limit}
         return env_info
 
-def simple_handover_pen_benefit_fn(sat_prox_mat, prev_assign, lambda_, benefit_info=None):
+def meaningful_task_handover_pen_benefit_fn(sat_prox_mat, prev_assign, lambda_, benefit_info=None):
     """
     Adjusts a 3D benefit matrix to account for generic handover penalty (i.e. constant penalty for switching tasks).
 
@@ -194,21 +194,29 @@ def simple_handover_pen_benefit_fn(sat_prox_mat, prev_assign, lambda_, benefit_i
     task_benefits = np.tile(task_benefits, (n,1))
     task_benefits = np.repeat(task_benefits[:,:,np.newaxis], L, axis=2)
 
+    benefits_hat = sat_prox_mat * task_benefits
+
+    #Determine tasks for which to apply a handover penalty.
     if prev_assign is None:
-        benefits_hat = sat_prox_mat * task_benefits
+        penalty_locations = np.zeros((n,m))
     else:
+        #Calculate which transitions are not penalized because of the type of task they are
+        #(i.e. some tasks are dummy tasks, or correspond to the same task at a different priority, etc.)
         try:
             T_trans = benefit_info.T_trans
         except AttributeError:
             T_trans = None
-
         if T_trans is None:
             T_trans = np.ones((m,m)) - np.eye(m) #default to all transitions (except nontransitions) being penalized
+        pen_locs_based_on_T_trans = prev_assign @ T_trans
 
-        state_dep_scaling = prev_assign @ T_trans
+        #Calculate which transitions are not penalized because they are not meaningful tasks (i.e. have zero benefit)
+        pen_locs_based_on_task_benefits = benefits_hat.sum(-1) > 1e-12
 
-        benefits_hat = sat_prox_mat * task_benefits
-        benefits_hat[:,:,0] = benefits_hat[:,:,0]-lambda_*state_dep_scaling
+        #Penalty is only applied when both conditions are met, so multiply them elementwise
+        penalty_locations = pen_locs_based_on_T_trans * pen_locs_based_on_task_benefits
+
+    benefits_hat[:,:,0] = benefits_hat[:,:,0]-lambda_*penalty_locations
 
     if init_dim == 2: 
         benefits_hat = np.squeeze(benefits_hat, axis=2)

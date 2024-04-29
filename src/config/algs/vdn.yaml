@@ -4,8 +4,10 @@
 action_selector: "epsilon_greedy"
 epsilon_start: 1.0
 epsilon_finish: 0.05
-epsilon_anneal_time: 50000
+epsilon_anneal_time: 250000
 evaluation_epsilon: 0.0
+
+t_max: 1500000
 
 runner: "episode"
 
@@ -15,7 +17,7 @@ buffer_size: 5000
 target_update_interval_or_tau: 200
 
 
-obs_agent_id: True
+obs_agent_id: False
 obs_last_action: False
 obs_individual_obs: False
 use_rnn: False
