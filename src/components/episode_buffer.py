@@ -109,7 +109,14 @@ class EpisodeBatch:
 
             #If ReplayBuffer is on CPU and the model is on MPS, we need to ensure that the data is on the same device.
             #Otherwise, we get a weird blit error. However, v.to("cpu") doesnt work, perhaps because v is in a specific computation graph.
-            if v.device != "cpu" and self.device == "cpu": v.clone().detach().to("cpu")
+            #NOTE: v.device is a torch.device object, so we need to convert it to a string to compare it to "cpu" (this is horrific)
+            if str(v.device) != "cpu" and self.device == "cpu": 
+                v.clone().detach().to("cpu")
+
+            #NOTE: why is this only necessary for parallel environments?
+            if v.dtype != dtype:
+                v = v.to(dtype)
+
             target[k][_slices] = v.view_as(target[k][_slices])
 
             if k in self.preprocess:

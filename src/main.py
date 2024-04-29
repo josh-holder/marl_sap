@@ -39,10 +39,7 @@ def my_main(_run, _config, _log):
     config['env_args']['seed'] = config["seed"]
 
     # run the framework
-    actions, reward = run(_run, config, _log)
-
-    return actions, float(reward)
-
+    return run(_run, config, _log)
 
 def _get_config(params, arg_name, subfolder):
     config_name = None
@@ -91,7 +88,7 @@ def experiment_run(params, explicit_dict_items=None, verbose=True):
             num_repeats = int(p.split("=")[1])
             params.remove(p)
 
-    # params = ['src/main.py', '--config=sap', '--env-config=gymma', 'with', 'env_args.key=simplest-env-v0', 't_max=200000']
+    # params = ['src/main.py', '--config=vdn_sap', '--env-config=mock_constellation_env', 'with', 't_max=200000', 'runner=parallel']
     th.set_num_threads(1)
 
     # Get the default configs from default.yaml
