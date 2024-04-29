@@ -96,14 +96,14 @@ class SAPQLearner:
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_actions), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(1,batch.max_seq_length): #want targets to be from t+1, so iterate from 1 to max_seq_length-1
-                    _, col_ind = scipy.optimize.linear_sum_assignment(mac_out_detach[bn, t, :, :], maximize=True)
-                    target_max_qvals[bn, t-1, :] = th.tensor(col_ind)
+                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(mac_out_detach[bn, t, :, :], maximize=True)
+                    target_max_qvals[bn, t-1, :] = target_mac_out[bn, t-1, row_ind, col_ind]
         else:
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_actions), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(batch.max_seq_length-1):
-                    _, col_ind = scipy.optimize.linear_sum_assignment(target_mac_out[bn, t, :, :].detach(), maximize=True)
-                    target_max_qvals[bn, t, :] = th.tensor(col_ind)
+                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(target_mac_out[bn, t, :, :].detach(), maximize=True)
+                    target_max_qvals[bn, t, :] = target_mac_out[bn, t, row_ind, col_ind]
 
         # Mix
         if self.mixer is not None:

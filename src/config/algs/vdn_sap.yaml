@@ -3,11 +3,11 @@
 # use epsilon greedy action selector
 action_selector: "sap"
 epsilon_start: 1.0
-epsilon_finish: 0.2
-epsilon_anneal_time: 750000
+epsilon_finish: 0.05
+epsilon_anneal_time: 250000
 evaluation_epsilon: 0
 
-t_max: 1250000
+t_max: 1500000
 
 runner: "episode"
 

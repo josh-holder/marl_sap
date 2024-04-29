@@ -23,7 +23,8 @@ def mock_constellation_test():
     sat_prox_mat = generate_benefits_over_time(n, m, T, 3, 6)
     
     #EVALUATE VDN
-    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_seed629043253_None_2024-04-28 14:06:42.177826'
+    print('Evaluating VDN')
+    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_seed852702613_2024-04-29 10:43:20.471693'
     params = [
         'src/main.py',
         '--config=vdn',
@@ -37,11 +38,12 @@ def mock_constellation_test():
         'env_args': {'sat_prox_mat': sat_prox_mat}
     }
     
-    vdn_exp = experiment_run(params, explicit_dict_items, verbose=False)
+    vdn_exp = experiment_run(params, explicit_dict_items, verbose=True)
     vdn_val = vdn_exp.info['test_return_mean'][0]
     
     #EVALUATE AUCTION VDN
-    vdn_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_seed599735264_None_2024-04-28 15:02:19.055127'
+    print('Evaluating Auction VDN')
+    vdn_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_sap_seed351721801_2024-04-29 10:12:48.059424'
     params = [
         'src/main.py',
         '--config=vdn_sap',
@@ -55,7 +57,7 @@ def mock_constellation_test():
         'env_args': {'sat_prox_mat': sat_prox_mat}
     }
     
-    vdn_sap_exp = experiment_run(params, explicit_dict_items, verbose=False)
+    vdn_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
     vdn_sap_val = vdn_sap_exp.info['test_return_mean'][0]
     
     print('VDN:', vdn_val)
