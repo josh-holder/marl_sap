@@ -8,7 +8,7 @@ from gym.utils import seeding
 import numpy as np
 import scipy.optimize
 
-class MockConstellationEnv(Env):
+class PowerConstellationEnv(Env):
     """
     Model a constellation, where benefits are provided to you for task in several states
     """
@@ -26,6 +26,7 @@ class MockConstellationEnv(Env):
         self.n_agents = n_agents
         self.num_tasks = num_tasks
         self.episode_step_limit = episode_step_limit
+        print(f"Episode step limit: {self.episode_step_limit}")
 
         self.benefit_fn = meaningful_task_handover_pen_benefit_fn
         self.benefit_info = benefit_info
@@ -43,8 +44,9 @@ class MockConstellationEnv(Env):
         self.graphs = None #both hardcoded to None for now
         self.init_assignment = None
 
-        #State is the previous assignment
+        #State is the previous assignment, plus the power state of the satellite
         self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
+        self.power_states = np.ones(self.n_agents)
 
         self.k = 0
 
@@ -56,8 +58,8 @@ class MockConstellationEnv(Env):
             #Action space is one action for each task
             self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.num_tasks)] * self.n_agents))
 
-        #Observation space is just the benefits per task for the next L time steps, plus the agent's previous assignment.
-        self.obs_space_size = self.L * self.num_tasks + self.num_tasks
+        #Observation space is just the benefits per task for the next L time steps, plus the agent's previous assignment, plus the power state.
+        self.obs_space_size = self.L * self.num_tasks + self.num_tasks + 1
         self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n_agents))
 
     def step(self, actions):
@@ -65,6 +67,8 @@ class MockConstellationEnv(Env):
         Input is actions in Discrete form.
         Returns reward, terminated, info.
         """
+        # print("power", self.power_states[0])
+
         if self.bids_as_actions:
             _, assignments = scipy.optimize.linear_sum_assignment(actions, maximize=True)
         else:
@@ -74,20 +78,36 @@ class MockConstellationEnv(Env):
 
         num_times_tasks_completed = np.zeros(self.num_tasks)
         for i in range(self.n_agents):
-            num_times_tasks_completed[assignments[i]] += 1
+            if self.power_states[i] > 0:
+                num_times_tasks_completed[assignments[i]] += 1
 
         total_reward = 0
         for i in range(self.n_agents):
-            chosen_task = assignments[i]
-            if adj_benefits[i, chosen_task] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
-                total_reward += adj_benefits[i, chosen_task] / num_times_tasks_completed[chosen_task]
-            else:
-                total_reward += adj_benefits[i, chosen_task]
+            if self.power_states[i] > 0:
+                chosen_task = assignments[i]
+                if adj_benefits[i, chosen_task] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
+                    total_reward += adj_benefits[i, chosen_task] / num_times_tasks_completed[chosen_task]
+                else:
+                    total_reward += adj_benefits[i, chosen_task]
 
         #Update the prev assignment:
         self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
         for i in range(self.n_agents):
             self.curr_assignment[i, assignments[i]] = 1
+
+        #Update agent power states
+        for i in range(self.n_agents):
+            if self.power_states[i] > 0:
+                chosen_task = assignments[i]
+                if self.sat_prox_mat[i,chosen_task,self.k] > 1e-12:
+                    self.power_states[i] -= 0.2
+                else:
+                    self.power_states[i] = min(self.power_states[i] + 0.1, 1)
+            else:
+                # print(f"Agent {i} is dead")
+                pass #do nothing if the agent is already dead
+
+        # print("assign",self.sat_prox_mat[0,assignments[0],self.k])
 
         self.k += 1        
 
@@ -97,6 +117,7 @@ class MockConstellationEnv(Env):
                 self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n_agents)]
             else: #if the episode has ended within your lookahead of L, just pad with zeros
                 self._obs = [np.concatenate([self._obs[i], np.zeros(self.num_tasks)]) for i in range(self.n_agents)]
+        self._obs = [np.concatenate([self._obs[i], [self.power_states[i]]]) for i in range(self.n_agents)] #add power state
 
         done = self.k >= self.episode_step_limit
         return total_reward, done, {}
@@ -105,6 +126,7 @@ class MockConstellationEnv(Env):
         """ Resets environment."""
         self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
         self.k = 0
+        self.power_states = np.ones(self.n_agents)
 
         if not self.constant_benefits:
             self.sat_prox_mat = generate_benefits_over_time(self.n_agents, self.num_tasks, self.episode_step_limit, 3, 6)
@@ -117,6 +139,7 @@ class MockConstellationEnv(Env):
                 self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n_agents)]
             else: #if the episode has ended within your lookahead of L, just pad with zeros
                 self._obs = [np.concatenate([self._obs[i], np.zeros(self.num_tasks)]) for i in range(self.n_agents)]
+        self._obs = [np.concatenate([self._obs[i], [self.power_states[i]]]) for i in range(self.n_agents)] #reset all agents to full power
 
         return self.get_obs(), self.get_state()
 
