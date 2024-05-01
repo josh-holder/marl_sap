@@ -27,7 +27,7 @@ def mock_constellation_test():
     
     #EVALUATE VDN
     print('Evaluating VDN')
-    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_seed889862897_2024-04-29 13:01:05.557927'
+    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_mock_const'
     params = [
         'src/main.py',
         '--config=vdn',
@@ -48,7 +48,7 @@ def mock_constellation_test():
     
     #EVALUATE AUCTION VDN
     print('Evaluating Auction VDN')
-    vdn_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_sap_seed17579898_2024-04-29 12:31:05.045160'
+    vdn_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_sap_mock_const'
     params = [
         'src/main.py',
         '--config=vdn_sap',
@@ -108,7 +108,7 @@ def power_constellation_test():
     
     #EVALUATE VDN
     print('Evaluating VDN')
-    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_seed639236868_2024-04-29 17:18:05.536377'
+    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_power_const'
     params = [
         'src/main.py',
         '--config=vdn',
@@ -130,7 +130,7 @@ def power_constellation_test():
     
     #EVALUATE AUCTION VDN
     print('Evaluating Auction VDN')
-    vdn_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_sap_seed326750695_2024-04-29 17:09:05.009411'
+    vdn_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_sap_power_const'
     params = [
         'src/main.py',
         '--config=vdn_sap',
