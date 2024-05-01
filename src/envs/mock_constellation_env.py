@@ -76,13 +76,13 @@ class MockConstellationEnv(Env):
         for i in range(self.n_agents):
             num_times_tasks_completed[assignments[i]] += 1
 
-        total_reward = 0
+        rewards = []
         for i in range(self.n_agents):
             chosen_task = assignments[i]
             if adj_benefits[i, chosen_task] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
-                total_reward += adj_benefits[i, chosen_task] / num_times_tasks_completed[chosen_task]
+                rewards.append(adj_benefits[i, chosen_task] / num_times_tasks_completed[chosen_task])
             else:
-                total_reward += adj_benefits[i, chosen_task]
+                rewards.append(adj_benefits[i, chosen_task])
 
         #Update the prev assignment:
         self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
@@ -99,7 +99,7 @@ class MockConstellationEnv(Env):
                 self._obs = [np.concatenate([self._obs[i], np.zeros(self.num_tasks)]) for i in range(self.n_agents)]
 
         done = self.k >= self.episode_step_limit
-        return total_reward, done, {}
+        return rewards, done, {}
 
     def reset(self):
         """ Resets environment."""

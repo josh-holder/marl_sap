@@ -128,7 +128,7 @@ class ParallelRunner:
 
             # Post step data we will insert for the current timestep
             post_transition_data = {
-                "reward": [],
+                "rewards": [],
                 "terminated": []
             }
             # Data for the next step we will insert in order to select an action
@@ -143,9 +143,12 @@ class ParallelRunner:
                 if not terminated[idx]:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
-                    post_transition_data["reward"].append((data["reward"],))
+                    post_transition_data["rewards"].append((data["rewards"],))
 
-                    episode_returns[idx] += data["reward"]
+                    if getattr(self.args, "cooperative_rewards", False):
+                        episode_returns[idx] += data["rewards"]
+                    else:
+                        episode_returns[idx] += sum(data["rewards"])
                     episode_lengths[idx] += 1
                     if not test_mode:
                         self.env_steps_this_run += 1
@@ -224,7 +227,7 @@ def env_worker(remote, env_fn):
         if cmd == "step":
             actions = data
             # Take a step in the environment
-            reward, terminated, env_info = env.step(actions)
+            rewards, terminated, env_info = env.step(actions)
             # Return the observations, avail_actions and state to make the next action
             state = env.get_state()
             avail_actions = env.get_avail_actions()
@@ -235,7 +238,7 @@ def env_worker(remote, env_fn):
                 "avail_actions": avail_actions,
                 "obs": obs,
                 # Rest of the data for the current timestep
-                "reward": reward,
+                "rewards": rewards,
                 "terminated": terminated,
                 "info": env_info
             })

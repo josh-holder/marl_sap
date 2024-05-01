@@ -45,7 +45,7 @@ class COMALearner:
         # Get the relevant quantities
         bs = batch.batch_size
         max_t = batch.max_seq_length
-        rewards = batch["reward"][:, :-1]
+        rewards = batch["rewards"][:, :-1]
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()

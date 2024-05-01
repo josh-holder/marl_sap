@@ -58,10 +58,10 @@ class BenefitObsEnv(Env):
         for i in range(self.n_agents):
             num_times_tasks_completed[assignments[i]] += 1
 
-        total_reward = 0
+        rewards = []
         for i in range(self.n_agents):
             chosen_task = assignments[i]
-            total_reward += self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task]
+            rewards.append(self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task])
 
         #Transition into the state according to the first agents assignment.
         self.curr_state = assignments[0] % self.num_states
@@ -74,7 +74,7 @@ class BenefitObsEnv(Env):
 
         done = self.curr_step >= self.episode_step_limit
 
-        return total_reward, done, {}
+        return rewards, done, {}
 
     def reset(self):
         """ Resets environment to state 0."""

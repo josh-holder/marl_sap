@@ -45,15 +45,17 @@ class SAPQLearner:
             
         self.n_agents = args.n_agents
         self.n_actions = args.n_actions
-
+        
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
+
+        reward_shape = self.n_agents if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(1,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-        rewards = batch["reward"][:, :-1]
+        rewards = batch["rewards"][:, :-1]
         actions = batch["actions"][:, :-1]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()

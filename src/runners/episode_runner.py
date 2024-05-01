@@ -65,14 +65,17 @@ class EpisodeRunner:
             # Receive the actions for each agent at this timestep in a batch of size 1
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode)
 
-            reward, terminated, env_info = self.env.step(actions[0])
+            rewards, terminated, env_info = self.env.step(actions[0])
             if test_mode and self.args.render:
                 self.env.render()
-            episode_return += reward
+            if getattr(self.args, "cooperative_rewards", False):
+                episode_return += rewards
+            else:
+                episode_return += sum(rewards)
 
             post_transition_data = {
                 "actions": actions,
-                "reward": [(reward,)],
+                "rewards": [(rewards,)],
                 "terminated": [(terminated != env_info.get("episode_step_limit", False),)],
             }
 

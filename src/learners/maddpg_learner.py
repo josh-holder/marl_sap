@@ -45,7 +45,7 @@ class MADDPGLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-        rewards = batch["reward"][:, :-1]
+        rewards = batch["rewards"][:, :-1]
         actions = batch["actions_onehot"]
         terminated = batch["terminated"][:, :-1].float()
         rewards = rewards.unsqueeze(2).expand(-1, -1, self.n_agents, -1)

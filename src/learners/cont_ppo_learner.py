@@ -41,12 +41,14 @@ class ContinuousPPOLearner:
             
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n_agents, ), device=device)
+
+        reward_shape = self.n_agents if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(1,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-        rewards = batch["reward"][:, :-1]
+        rewards = batch["rewards"][:, :-1]
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
@@ -58,7 +60,7 @@ class ContinuousPPOLearner:
 
         #Expand mask and rewards to match actions
         mask = mask.unsqueeze(-1).repeat(1, 1, self.n_agents, self.n_actions)
-        rewards = rewards.unsqueeze(-1).repeat(1, 1, self.n_agents, self.n_actions)
+        rewards = rewards.unsqueeze(-1).repeat(1, 1, 1, self.n_actions) #problematic line: should it be 1, 1, self.n_agents, self.n_actions if there is cooperative reward?
 
         critic_mask = mask.clone()
 

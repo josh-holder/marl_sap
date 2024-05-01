@@ -110,6 +110,11 @@ def run_sequential(args, logger):
     args.n_actions = env_info["n_actions"]
     args.state_shape = env_info["state_shape"]
 
+    if getattr(args, "cooperative_rewards", False):
+        rewards_vshape = 1
+    else:
+        rewards_vshape = args.n_agents
+
     # Default/Base scheme
     bids_as_actions = args.env_args.get("bids_as_actions", False)
     if not bids_as_actions:
@@ -122,10 +127,10 @@ def run_sequential(args, logger):
                 "group": "agents",
                 "dtype": th.int,
             },
-            "reward": {"vshape": (1,)},
+            "rewards": {"vshape": (rewards_vshape,)},
             "terminated": {"vshape": (1,), "dtype": th.uint8},
         }
-        preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=args.n_actions)])}
+        preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["n_actions"])])}
 
     else: #if bids_as_actions, actions space is n_actions (mu for each task)
         scheme = {
@@ -137,7 +142,7 @@ def run_sequential(args, logger):
                 "group": "agents",
                 "dtype": th.int,
             },
-            "reward": {"vshape": (1,)},
+            "rewards": {"vshape": (rewards_vshape,)},
             "terminated": {"vshape": (1,), "dtype": th.uint8},
         }
         preprocess = {}

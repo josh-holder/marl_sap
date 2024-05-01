@@ -48,7 +48,7 @@ class PACDCGLearner:
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
 
-        rewards = batch["reward"][:, :-1]
+        rewards = batch["rewards"][:, :-1]
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
