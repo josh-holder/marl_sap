@@ -188,3 +188,10 @@ class ContinuousActionSelector():
         return th.distributions.Normal(old_agent_inputs, self.variance).log_prob(actions)
     
 REGISTRY["continuous"] = ContinuousActionSelector
+
+class RealConstellationActionSelector():
+    def __init__(self, args):
+        self.args = args
+
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+        return agent_inputs.detach() #we no longer need gradients once we convert NN outputs to actions, so detach

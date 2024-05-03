@@ -88,7 +88,7 @@ def evaluate_sequential(args, runner):
         batch = runner.run(test_mode=True)
 
     episode_actions = batch.data.transition_data['actions'][0,:,:,0]
-    episode_reward = batch.data.transition_data['reward'].sum()
+    episode_reward = batch.data.transition_data['rewards'].sum()
 
     if args.save_replay:
         runner.save_replay()
@@ -110,42 +110,32 @@ def run_sequential(args, logger):
     args.n_actions = env_info["n_actions"]
     args.state_shape = env_info["state_shape"]
 
-    if getattr(args, "cooperative_rewards", False):
-        rewards_vshape = 1
-    else:
-        rewards_vshape = args.n_agents
-
     # Default/Base scheme
-    bids_as_actions = args.env_args.get("bids_as_actions", False)
-    if not bids_as_actions:
-        scheme = {
-            "state": {"vshape": env_info["state_shape"]},
-            "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
-            "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
-            "avail_actions": {
-                "vshape": (env_info["n_actions"],),
-                "group": "agents",
-                "dtype": th.int,
-            },
-            "rewards": {"vshape": (rewards_vshape,)},
-            "terminated": {"vshape": (1,), "dtype": th.uint8},
-        }
-        preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["n_actions"])])}
+    scheme = {
+        "state": {"vshape": env_info["state_shape"]},
+        "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
+        "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
+        "avail_actions": {
+            "vshape": (env_info["n_actions"],),
+            "group": "agents",
+            "dtype": th.int,
+        },
+        "rewards": {"vshape": (1,)},
+        "terminated": {"vshape": (1,), "dtype": th.uint8},
+    }
+    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["n_actions"])])}
 
-    else: #if bids_as_actions, actions space is n_actions (mu for each task)
-        scheme = {
-            "state": {"vshape": env_info["state_shape"]},
-            "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
-            "actions": {"vshape": (env_info["n_actions"],), "group": "agents"}, #change to n_tasks, float
-            "avail_actions": {
-                "vshape": (env_info["n_actions"],),
-                "group": "agents",
-                "dtype": th.int,
-            },
-            "rewards": {"vshape": (rewards_vshape,)},
-            "terminated": {"vshape": (1,), "dtype": th.uint8},
-        }
+    #Adjust scheme based on configs
+    if getattr(args, "bids_as_actions", False):
+        #Bids are the actions, so n_actions-dimensional, and no longer need to be one-hot encoded
+        scheme["actions"] = {"vshape": (env_info["n_actions"],), "group": "agents", "dtype": th.float32}
         preprocess = {}
+    if not getattr(args, "cooperative_rewards", False):
+        #Rewards are per-agent, so n_agents-dimensional
+        scheme["rewards"] = {"vshape": (env_info["n_agents"],)}
+    if getattr(args, "multi_component_obs", False):
+        scheme["obs"]["multi_component"] = True #Don't store multi-component obs in buffer
+        
 
     groups = {"agents": args.n_agents}
 

@@ -88,7 +88,7 @@ def experiment_run(params, explicit_dict_items=None, verbose=True):
             num_repeats = int(p.split("=")[1])
             params.remove(p)
 
-    # params = ['src/main.py', '--config=vdn_sap', '--env-config=mock_constellation_env', 'with', 't_max=200000', 'runner=parallel']
+    params = ['src/main.py', '--config=iql_sap', '--env-config=real_constellation_env']
     th.set_num_threads(1)
 
     # Get the default configs from default.yaml

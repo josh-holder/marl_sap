@@ -29,9 +29,9 @@ class EpisodeBatch:
 
     def _setup_data(self, scheme, groups, batch_size, max_seq_length, preprocess):
         if preprocess is not None:
+            #Example of preprocessing: converting action to one-hot
             for k in preprocess:
                 assert k in scheme
-                #Renames actions to actions_onehot
                 new_k = preprocess[k][0]
                 transforms = preprocess[k][1]
 
@@ -59,22 +59,39 @@ class EpisodeBatch:
             assert "vshape" in field_info, "Scheme must define vshape for {}".format(field_key)
             vshape = field_info["vshape"]
             episode_const = field_info.get("episode_const", False) #if this is a field constant over the entire episode
+            multi_component = field_info.get("multi_component", False) #if this is a field that has multiple components
             group = field_info.get("group", None) #sets group and dtype to defaults if not found
             dtype = field_info.get("dtype", th.float32)
 
-            if isinstance(vshape, int):
-                vshape = (vshape,)
+            if not multi_component:
+                if isinstance(vshape, int):
+                    vshape = (vshape,)
 
-            if group: 
-                assert group in groups, "Group {} must have its number of members defined in _groups_".format(group)
-                shape = (groups[group], *vshape)
-            else: #if group is None
-                shape = vshape
+                if group: 
+                    assert group in groups, "Group {} must have its number of members defined in _groups_".format(group)
+                    shape = (groups[group], *vshape)
+                else: #if group is None
+                    shape = vshape
 
-            if episode_const:
-                self.data.episode_data[field_key] = th.zeros((batch_size, *shape), dtype=dtype, device=self.device)
-            else:
-                self.data.transition_data[field_key] = th.zeros((batch_size, max_seq_length, *shape), dtype=dtype, device=self.device)
+                
+                if episode_const:
+                    self.data.episode_data[field_key] = th.zeros((batch_size, *shape), dtype=dtype, device=self.device)
+                else:
+                    self.data.transition_data[field_key] = th.zeros((batch_size, max_seq_length, *shape), dtype=dtype, device=self.device)
+            else: #if multi_component, add a new key for each component, but not for the original key
+                for i, comp_shape in enumerate(vshape):
+                    if isinstance(comp_shape, int):
+                        comp_shape = (comp_shape,)
+                    if group:
+                        assert group in groups, "Group {} must have its number of members defined in _groups_".format(group)
+                        shape = (groups[group], *comp_shape)
+                    else:
+                        shape = comp_shape
+
+                    if episode_const:
+                        self.data.episode_data["{}_{}".format(field_key, i)] = th.zeros((batch_size, *shape), dtype=dtype, device=self.device)
+                    else:
+                        self.data.transition_data["{}_{}".format(field_key, i)] = th.zeros((batch_size, max_seq_length, *shape), dtype=dtype, device=self.device)
 
     def extend(self, scheme, groups=None):
         self._setup_data(scheme, self.groups if groups is None else groups, self.batch_size, self.max_seq_length)
@@ -90,41 +107,80 @@ class EpisodeBatch:
         #Adds data to the replay buffer in the appropriate location.
         slices = self._parse_slices((bs, ts)) #make sure slices are accurate, converted to (ts, ts+1, None), etc.
         for k, v in data.items():
-            if k in self.data.transition_data: #if the key is listed in the transition data to store in the replay buffer
-                target = self.data.transition_data
-                if mark_filled:
-                    target["filled"][slices] = 1
-                    mark_filled = False
-                _slices = slices
-            elif k in self.data.episode_data:
-                target = self.data.episode_data
-                _slices = slices[0]
+            if not self.scheme[k].get("multi_component", False):
+                if k in self.data.transition_data: #if the key is listed in the transition data to store in the replay buffer
+                    target = self.data.transition_data
+                    if mark_filled:
+                        target["filled"][slices] = 1
+                        mark_filled = False
+                    _slices = slices
+                elif k in self.data.episode_data:
+                    target = self.data.episode_data
+                    _slices = slices[0]
+                else:
+                    raise KeyError("{} not found in transition or episode data".format(k))
+
+                dtype = self.scheme[k].get("dtype", th.float32)
+
+                if type(v) == list:
+                    v = th.tensor(np.array(v), dtype=dtype, device=self.device)
+                self._check_safe_view(v, target[k][_slices])
+
+                #If ReplayBuffer is on CPU and the model is on MPS, we need to ensure that the data is on the same device.
+                #Otherwise, we get a weird blit error. However, v.to("cpu") doesnt work, perhaps because v is in a specific computation graph.
+                #NOTE: v.device is a torch.device object, so we need to convert it to a string to compare it to "cpu" (this is horrific)
+                if str(v.device) != "cpu" and self.device == "cpu": 
+                    v.clone().detach().to("cpu")
+
+                #NOTE: why is this only necessary for parallel environments?
+                if v.dtype != dtype:
+                    v = v.to(dtype)
+
+                target[k][_slices] = v.view_as(target[k][_slices])
+
+                if k in self.preprocess:
+                    new_k = self.preprocess[k][0]
+                    v = target[k][_slices]
+                    for transform in self.preprocess[k][1]:
+                        v = transform.transform(v)
+                    target[new_k][_slices] = v.view_as(target[new_k][_slices])
             else:
-                raise KeyError("{} not found in transition or episode data".format(k))
+                #it is multi-component
+                for i, comp in enumerate(v):
+                    comp_k = "{}_{}".format(k, i)
+                    print(len(comp))
+                    print(comp[0][0].shape, comp[0][1].shape, comp[0][2].shape)
+                    if comp_k in self.data.transition_data: #if the key is listed in the transition data to store in the replay buffer
+                        target = self.data.transition_data
+                        if mark_filled:
+                            target["filled"][slices] = 1
+                            mark_filled = False
+                        _slices = slices
+                    elif comp_k in self.data.episode_data:
+                        target = self.data.episode_data
+                        _slices = slices[0]
+                    else:
+                        raise KeyError("{} not found in transition or episode data".format(comp_k))
 
-            dtype = self.scheme[k].get("dtype", th.float32)
-            if type(v) == list:
-                v = th.tensor(np.array(v), dtype=dtype, device=self.device)
-            self._check_safe_view(v, target[k][_slices])
+                    dtype = self.scheme[k].get("dtype", th.float32)
 
-            #If ReplayBuffer is on CPU and the model is on MPS, we need to ensure that the data is on the same device.
-            #Otherwise, we get a weird blit error. However, v.to("cpu") doesnt work, perhaps because v is in a specific computation graph.
-            #NOTE: v.device is a torch.device object, so we need to convert it to a string to compare it to "cpu" (this is horrific)
-            if str(v.device) != "cpu" and self.device == "cpu": 
-                v.clone().detach().to("cpu")
+                    if type(comp) == list:
+                        comp = th.tensor(np.array(comp), dtype=dtype, device=self.device)
+                    self._check_safe_view(comp, target[comp_k][_slices])
 
-            #NOTE: why is this only necessary for parallel environments?
-            if v.dtype != dtype:
-                v = v.to(dtype)
+                    #If ReplayBuffer is on CPU and the model is on MPS, we need to ensure that the data is on the same device.
+                    #Otherwise, we get a weird blit error. However, v.to("cpu") doesnt work, perhaps because v is in a specific computation graph.
+                    #NOTE: v.device is a torch.device object, so we need to convert it to a string to compare it to "cpu" (this is horrific)
+                    if str(comp.device) != "cpu" and self.device == "cpu": 
+                        comp.clone().detach().to("cpu")
 
-            target[k][_slices] = v.view_as(target[k][_slices])
+                    #NOTE: why is this only necessary for parallel environments?
+                    if comp.dtype != dtype:
+                        comp = comp.to(dtype)
 
-            if k in self.preprocess:
-                new_k = self.preprocess[k][0]
-                v = target[k][_slices]
-                for transform in self.preprocess[k][1]:
-                    v = transform.transform(v)
-                target[new_k][_slices] = v.view_as(target[new_k][_slices])
+                    target[comp_k][_slices] = comp.view_as(target[comp_k][_slices])
+
+                    #assume no preprocessing for multi-component data (please :) )
 
     def _check_safe_view(self, v, dest):
         #Ensure that dimensions are correct, i.e. that the entry in the replay buffer
@@ -139,6 +195,7 @@ class EpisodeBatch:
 
     def __getitem__(self, item):
         if isinstance(item, str):
+            #Return the data associated with the key
             if item in self.data.episode_data:
                 return self.data.episode_data[item]
             elif item in self.data.transition_data:
@@ -146,6 +203,7 @@ class EpisodeBatch:
             else:
                 raise ValueError
         elif isinstance(item, tuple) and all([isinstance(it, str) for it in item]):
+            #Return a new EpisodeBatch with only the specified keys
             new_data = self._new_data_sn()
             for key in item:
                 if key in self.data.transition_data:
@@ -162,6 +220,7 @@ class EpisodeBatch:
             ret = EpisodeBatch(new_scheme, new_groups, self.batch_size, self.max_seq_length, data=new_data, device=self.device)
             return ret
         else:
+            #Return a subset of the batch based on the slices provided
             item = self._parse_slices(item)
             new_data = self._new_data_sn()
             for k, v in self.data.transition_data.items():

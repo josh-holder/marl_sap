@@ -183,6 +183,30 @@ def power_constellation_test():
     plt.ylabel('Handovers')
     plt.show()
 
+def neighborhood_benefits_test():
+    sat_prox_mat = np.zeros((4,4,2))
+    sat_prox_mat[:,:,0] = np.array([[5, 0, 0, 1],
+                                    [2, 0, 0, 0],
+                                    [3, 1, 4, 2],
+                                    [1, 3, 0, 10]])
+    sat_prox_mat[:,:,1] = np.ones((4,4))
+    
+    params = [
+        'src/main.py',
+        '--config=iql_sap',
+        '--env-config=real_constellation_env',
+        ]
+    explicit_dict_items = {
+        'env_args': {'sat_prox_mat': sat_prox_mat,
+                     'graphs': 1, #so its not None
+                     'M': 2,
+                     'N': 2,
+                     'L': 2,
+                     'm': 4,
+                     'episode_step_limit': 1}
+    }
+    
+    vdn_exp = experiment_run(params, explicit_dict_items, verbose=True)
 
 if __name__ == "__main__":
-    power_constellation_test()
+    neighborhood_benefits_test()
