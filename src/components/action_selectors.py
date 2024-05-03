@@ -17,7 +17,7 @@ class MultinomialActionSelector():
         self.epsilon = self.schedule.eval(0)
         self.test_greedy = getattr(args, "test_greedy", True)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
         masked_policies = agent_inputs.clone()
         masked_policies[avail_actions == 0.0] = 0.0
 
@@ -43,7 +43,7 @@ class EpsilonGreedyActionSelector():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
@@ -76,7 +76,7 @@ class EpsilonGreedySAPTestActionSelector():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
@@ -113,7 +113,7 @@ class SoftPoliciesSelector():
     def __init__(self, args):
         self.args = args
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
         m = Categorical(agent_inputs)
         picked_actions = m.sample().long()
         return picked_actions
@@ -129,7 +129,7 @@ class SequentialAssignmentProblemSelector():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
     
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
@@ -147,7 +147,7 @@ class SequentialAssignmentProblemSelector():
                 picked_actions[batch, :] = th.randperm(n_agents)
             else:
                 # Solve the assignment problem for each batch, converting to numpy first
-                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().numpy()# + np.random.normal(0, self.epsilon, (n_agents, n_actions))
+                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().numpy()
 
                 _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values, maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)
@@ -155,15 +155,6 @@ class SequentialAssignmentProblemSelector():
         return picked_actions
     
 REGISTRY["sap"] = SequentialAssignmentProblemSelector
-
-class PassthroughActionSelector():
-    def __init__(self, args):
-        self.args = args
-
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
-        return agent_inputs.detach() #we no longer need gradients once we convert NN outputs to actions, so detach
-    
-REGISTRY["passthrough"] = PassthroughActionSelector
 
 class ContinuousActionSelector():
     def __init__(self, args):
@@ -173,7 +164,7 @@ class ContinuousActionSelector():
                                               decay="linear")
         self.variance = self.schedule.eval(0)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
         if getattr(self.args, "softmax_agent_inputs", False): agent_inputs = th.softmax(agent_inputs, dim=1)
 
         if test_mode:
@@ -189,9 +180,49 @@ class ContinuousActionSelector():
     
 REGISTRY["continuous"] = ContinuousActionSelector
 
-class RealConstellationActionSelector():
+class RealConstellationSAPSelector():
+    """
+    Like SAP action selector, but for the real constellation environment, so gets the state to recover
+    which were the M best tasks.
+    """
     def __init__(self, args):
         self.args = args
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
-        return agent_inputs.detach() #we no longer need gradients once we convert NN outputs to actions, so detach
+        self.schedule = DecayThenFlatSchedule(args.epsilon_start, args.epsilon_finish, args.epsilon_anneal_time,
+                                              decay="linear")
+        self.epsilon = self.schedule.eval(0)
+    
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
+        assert state is not None, "Need state to figure out which are the top M tasks for each agent."
+        # Assuming agent_inputs is a batch of Q-Values for each agent bav
+        self.epsilon = self.schedule.eval(t_env)
+
+        if test_mode:
+            # Greedy action selection only
+            self.epsilon = self.args.evaluation_epsilon
+
+        num_batches = state.shape[0]
+        n_agents = state.shape[1]
+        n_actions = state.shape[2]
+
+        picked_actions = th.zeros(num_batches, n_agents)
+        for batch in range(num_batches):
+            if np.random.rand() < self.epsilon:
+                picked_actions[batch, :] = th.randperm(n_agents)
+            else:
+                # Solve the assignment problem for each batch, converting to numpy first
+                top_M_benefits_from_q_values = agent_inputs[batch, :, :].detach().numpy()
+
+                #find M max indices in total_agent_benefits_by_task
+                top_agent_tasks = np.argsort(-state[batch,:,:], axis=-1)[:, :self.args.env_args['M']]
+
+                benefit_matrix_from_q_values = np.zeros((n_agents, n_actions))
+                #dawg idk how this line works but it puts the top M benefits in the right place
+                benefit_matrix_from_q_values[np.arange(n_agents)[:, np.newaxis], top_agent_tasks] = top_M_benefits_from_q_values
+
+                _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values, maximize=True)
+                picked_actions[batch, :] = th.tensor(col_ind)
+
+        return picked_actions
+    
+REGISTRY["real_const_sap"] = RealConstellationSAPSelector

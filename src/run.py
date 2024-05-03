@@ -133,9 +133,6 @@ def run_sequential(args, logger):
     if not getattr(args, "cooperative_rewards", False):
         #Rewards are per-agent, so n_agents-dimensional
         scheme["rewards"] = {"vshape": (env_info["n_agents"],)}
-    if getattr(args, "multi_component_obs", False):
-        scheme["obs"]["multi_component"] = True #Don't store multi-component obs in buffer
-        
 
     groups = {"agents": args.n_agents}
 
