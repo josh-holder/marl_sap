@@ -29,7 +29,7 @@ use_rnn: False
 standardise_returns: False
 standardise_rewards: True
 agent_output_type: "q"
-learner: "sap_q_learner"
+learner: "filtered_sap_q_learner"
 double_q: True
 use_rnn: False
 mixer:

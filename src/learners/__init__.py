@@ -1,5 +1,6 @@
 from .q_learner import QLearner
 from .sap_q_learner import SAPQLearner
+from .filtered_sap_q_learner import FilteredSAPQLearner
 from .coma_learner import COMALearner
 from .qtran_learner import QLearner as QTranLearner
 from .actor_critic_learner import ActorCriticLearner
@@ -12,6 +13,7 @@ REGISTRY = {}
 
 REGISTRY["q_learner"] = QLearner
 REGISTRY["sap_q_learner"] = SAPQLearner
+REGISTRY["filtered_sap_q_learner"] = FilteredSAPQLearner
 REGISTRY["coma_learner"] = COMALearner
 REGISTRY["qtran_learner"] = QTranLearner
 REGISTRY["actor_critic_learner"] = ActorCriticLearner

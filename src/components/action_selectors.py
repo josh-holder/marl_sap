@@ -211,12 +211,18 @@ class RealConstellationSAPSelector():
                 picked_actions[batch, :] = th.randperm(n_agents)
             else:
                 # Solve the assignment problem for each batch, converting to numpy first
-                top_M_benefits_from_q_values = agent_inputs[batch, :, :].detach().numpy()
+                top_M_benefits_from_q_values = agent_inputs[batch, :, :].detach()
+
+                #Pop the last column off of top_M_benefits_from_q_values
+                baseline_action_benefit = top_M_benefits_from_q_values[:, -1]
+                top_M_benefits_from_q_values = top_M_benefits_from_q_values[:, :-1]
+
+                #Create a matrix where the default value is the baseline action benefit
+                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n_agents, n_actions).clone()
 
                 #find M max indices in total_agent_benefits_by_task
                 top_agent_tasks = np.argsort(-state[batch,:,:], axis=-1)[:, :self.args.env_args['M']]
 
-                benefit_matrix_from_q_values = np.zeros((n_agents, n_actions))
                 #dawg idk how this line works but it puts the top M benefits in the right place
                 benefit_matrix_from_q_values[np.arange(n_agents)[:, np.newaxis], top_agent_tasks] = top_M_benefits_from_q_values
 

@@ -32,7 +32,7 @@ class CustomCNNConstellationAgent(nn.Module):
 
         # Define the MLP layers
         self.fc1 = nn.Linear(num_features_combined, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, self.M)  # Output layer
+        self.fc2 = nn.Linear(hidden_dim, self.M + 1)  # Output layer is Q-Values for each action and the no-op action
 
     def init_hidden(self):
         return self.fc1.weight.new(1, self.args.hidden_dim).zero_() #not used here

@@ -66,10 +66,9 @@ class RealConstellationEnv(Env):
         self.bids_as_actions = bids_as_actions
         if self.bids_as_actions:
             #Action space is a bid for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.M,))] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.get_total_actions(),))] * self.n_agents))
         else:
-            #Action space is one action for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.M)] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.get_total_actions())] * self.n_agents))
 
         # Define the joint observation space for all agents
         self.obs_space_size = self.get_obs_size()

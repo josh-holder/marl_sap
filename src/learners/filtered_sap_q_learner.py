@@ -3,11 +3,12 @@ from components.episode_buffer import EpisodeBatch
 from modules.mixers.vdn import VDNMixer
 from modules.mixers.qmix import QMixer
 import torch as th
+import numpy as np
 from torch.optim import Adam
 from components.standarize_stream import RunningMeanStd
 import scipy.optimize
 
-class SAPQLearner:
+class FilteredSAPQLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
         self.mac = mac
@@ -66,6 +67,9 @@ class SAPQLearner:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
 
+        state = batch["state"]
+        top_agent_tasks = th.topk(state, k=self.args.env_args['M'], dim=-1).indices
+
         # Calculate estimated Q-Values
         mac_out = []
         self.mac.init_hidden(batch.batch_size)
@@ -73,8 +77,20 @@ class SAPQLearner:
             agent_outs = self.mac.forward(batch, t=t)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
+
+        #Pop the last column off of agent outputs for the no-op action, others are the Q-Values for top M actions
+        baseline_action_benefit = mac_out[:, :, :, -1]
+        top_M_q_values = mac_out[:, :, :, :-1]
+
+        #Create a matrix where the default value is the baseline action benefit
+        q_values_out = baseline_action_benefit.unsqueeze(-1).expand(-1, -1, -1, self.args.n_actions).clone()
+
+        #find M max indices in total_agent_benefits_by_task
+        indices = th.tensor(np.indices(top_agent_tasks.shape))
+        q_values_out[indices[0], indices[1], indices[2], top_agent_tasks] = top_M_q_values
+
         # Pick the Q-Values for the actions taken by each agent
-        chosen_action_qvals = th.gather(mac_out[:, :-1], dim=3, index=actions).squeeze(3)  # Remove the last dim
+        chosen_action_qvals = th.gather(q_values_out[:, :-1], dim=3, index=actions).squeeze(3)  # Remove the last dim
 
         # Calculate the Q-Values necessary for the target
         target_mac_out = []
@@ -86,26 +102,37 @@ class SAPQLearner:
         # We don't need the first timestep's Q-Value estimate for calculating targets
         target_mac_out = th.stack(target_mac_out[1:], dim=1)  # Concat across time
 
+        #Pop the last column off of agent outputs for the no-op action, others are the Q-Values for top M actions
+        target_baseline_action_benefit = target_mac_out[:, :, :, -1]
+        target_top_M_q_values = target_mac_out[:, :, :, :-1]
+
+        #Create a matrix where the default value is the baseline action benefit
+        target_q_values_out = target_baseline_action_benefit.unsqueeze(-1).expand(-1, -1, -1, self.args.n_actions).clone()
+
+        #find M max indices in total_agent_benefits_by_task
+        indices = th.tensor(np.indices(top_agent_tasks[:, 1:].shape))
+        target_q_values_out[indices[0], indices[1], indices[2], top_agent_tasks[:, 1:]] = target_top_M_q_values
+
         # Mask out unavailable actions
-        target_mac_out[avail_actions[:, 1:] == 0] = -9999999
+        target_q_values_out[avail_actions[:, 1:] == 0] = -9999999
 
         # Max over target Q-Values
         if self.args.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            mac_out_detach = mac_out.clone().detach()
-            mac_out_detach[avail_actions == 0] = -9999999
+            q_values_out_detach = q_values_out.clone().detach()
+            q_values_out_detach[avail_actions == 0] = -9999999
             
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(1,batch.max_seq_length): #want targets to be from t+1, so iterate from 1 to max_seq_length-1
-                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(mac_out_detach[bn, t, :, :], maximize=True)
-                    target_max_qvals[bn, t-1, :] = target_mac_out[bn, t-1, row_ind, col_ind]
+                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(q_values_out_detach[bn, t, :, :], maximize=True)
+                    target_max_qvals[bn, t-1, :] = target_q_values_out[bn, t-1, row_ind, col_ind]
         else:
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(batch.max_seq_length-1):
-                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(target_mac_out[bn, t, :, :].detach(), maximize=True)
-                    target_max_qvals[bn, t, :] = target_mac_out[bn, t, row_ind, col_ind]
+                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(target_q_values_out[bn, t, :, :].detach(), maximize=True)
+                    target_max_qvals[bn, t, :] = target_q_values_out[bn, t, row_ind, col_ind]
 
         # Mix
         if self.mixer is not None:
