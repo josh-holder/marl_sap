@@ -119,7 +119,7 @@ class FilteredSAPQLearner:
         # Max over target Q-Values
         if self.args.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            q_values_out_detach = q_values_out.clone().detach()
+            q_values_out_detach = q_values_out.clone().detach().cpu()
             q_values_out_detach[avail_actions == 0] = -9999999
             
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)
@@ -131,7 +131,7 @@ class FilteredSAPQLearner:
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(batch.max_seq_length-1):
-                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(target_q_values_out[bn, t, :, :].detach(), maximize=True)
+                    row_ind, col_ind = scipy.optimize.linear_sum_assignment(target_q_values_out[bn, t, :, :].detach().cpu(), maximize=True)
                     target_max_qvals[bn, t, :] = target_q_values_out[bn, t, row_ind, col_ind]
 
         # Mix

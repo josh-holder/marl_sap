@@ -10,7 +10,8 @@ import scipy.optimize
 
 import sys
 sys.path.append('/Users/joshholder/code/satellite-constellation')
-from constellation_sim.constellation_generators import get_prox_mat_and_graphs_random_tasks
+from constellation_sim.constellation_generators import get_prox_mats_random_tasks_existing_const, gen_constellation_wout_tasks
+from constellation_sim.ConstellationSim import ConstellationSim
 
 import os
 os.environ["NUMBA_DEBUG_DUMP_BYTECODE"] = "0"
@@ -28,9 +29,14 @@ class RealConstellationEnv(Env):
         self.logger = logging.getLogger(__name__)
         self.seed(seed)
 
-        self.n_agents = num_planes*num_sats_per_plane
-        self.num_planes = num_planes
-        self.num_sats_per_plane = num_sats_per_plane
+        #Assume altitude 550, fov=60, fov_based_proximities, dt=1min, isl_dist=4000
+        self.const = gen_constellation_wout_tasks(num_planes, num_sats_per_plane)
+        #propogate orbits up front, and then use the same orbits for each episode,
+        #while changing tasks and task locations
+        self.const.propagate_orbits(episode_step_limit)
+        self.graphs = self.const.graph_over_time
+
+        self.n_agents = num_planes * num_sats_per_plane
 
         self.num_tasks = m
 
@@ -61,8 +67,6 @@ class RealConstellationEnv(Env):
         self.curr_assignment = None
         self.curr_benefits = None
 
-        self.k = 0
-
         self.bids_as_actions = bids_as_actions
         if self.bids_as_actions:
             #Action space is a bid for each task
@@ -73,16 +77,6 @@ class RealConstellationEnv(Env):
         # Define the joint observation space for all agents
         self.obs_space_size = self.get_obs_size()
         self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n_agents))
-
-        # #OLD, NOT FLAT OBSERVATION SPACE
-        # self.agent_observation_space = gym.spaces.Tuple((
-        #     gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.M, self.L)),  # Local benefits
-        #     gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.N, self.M, self.L)),  # Neighboring benefits
-        #     gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.N, self.M//2, self.L)),  # Benefits from other neighbor tasks
-        #     # gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_tasks,)),  # Previous assignment for this agent
-        #     # gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.n_agents-1, self.num_tasks))  # Previous assignments for neighbors
-        # ))
-        # self.observation_space = gym.spaces.Tuple(tuple([self.agent_observation_space] * self.n_agents))
 
     def step(self, actions):
         """ 
@@ -131,8 +125,8 @@ class RealConstellationEnv(Env):
         self.k = 0
 
         if not self.constant_benefits:
-            #Assume altitude 550, fov=60, fov_based_proximities, dt=1min, isl_dist=4000
-            self.sat_prox_mat, self.graphs = get_prox_mat_and_graphs_random_tasks(self.num_planes, self.num_sats_per_plane, self.num_tasks, self.episode_step_limit, isl_dist=4000)
+            #Remove the tasks from the constellation and generate new ones
+            self.sat_prox_mat = get_prox_mats_random_tasks_existing_const(self.const, self.num_tasks, self.episode_step_limit)
         else:
             pass #if benefits are constant, do nothing because you should use the same benefit matrix
 

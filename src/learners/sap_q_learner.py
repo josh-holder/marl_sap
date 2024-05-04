@@ -84,7 +84,7 @@ class SAPQLearner:
             target_mac_out.append(target_agent_outs)
 
         # We don't need the first timestep's Q-Value estimate for calculating targets
-        target_mac_out = th.stack(target_mac_out[1:], dim=1)  # Concat across time
+        target_mac_out = th.stack(target_mac_out[1:], dim=1).cpu()  # Concat across time
 
         # Mask out unavailable actions
         target_mac_out[avail_actions[:, 1:] == 0] = -9999999
@@ -92,7 +92,7 @@ class SAPQLearner:
         # Max over target Q-Values
         if self.args.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            mac_out_detach = mac_out.clone().detach()
+            mac_out_detach = mac_out.clone().detach().cpu()
             mac_out_detach[avail_actions == 0] = -9999999
             
             target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)

@@ -85,10 +85,10 @@ class EpsilonGreedySAPTestActionSelector():
         n_actions = agent_inputs.shape[2]
 
         if test_mode:
-            picked_actions = th.zeros(num_batches, n_agents)
+            picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
             for batch in range(num_batches):
                 # Solve the assignment problem for each batch, converting to numpy first
-                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().numpy()# + np.random.normal(0, self.epsilon, (n_agents, n_actions))
+                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().cpu()
 
                 _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values, maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)
@@ -141,13 +141,13 @@ class SequentialAssignmentProblemSelector():
         n_agents = agent_inputs.shape[1]
         n_actions = agent_inputs.shape[2]
 
-        picked_actions = th.zeros(num_batches, n_agents)
+        picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
         for batch in range(num_batches):
             if np.random.rand() < self.epsilon:
                 picked_actions[batch, :] = th.randperm(n_agents)
             else:
-                # Solve the assignment problem for each batch, converting to numpy first
-                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().numpy()
+                # Solve the assignment problem for each batch, moving to cpu first
+                benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().cpu()
 
                 _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values, maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)
@@ -169,10 +169,10 @@ class ContinuousActionSelector():
 
         if test_mode:
             self.variance = self.args.evaluation_epsilon
-            picked_actions = th.normal(agent_inputs, self.variance)
+            picked_actions = th.normal(agent_inputs, self.variance, device=self.args.device)
         else:
             self.variance = self.schedule.eval(t_env)
-            picked_actions = th.normal(agent_inputs, self.variance)
+            picked_actions = th.normal(agent_inputs, self.variance, device=self.args.device)
         return picked_actions.detach()
     
     def action_log_prob(self, actions, old_agent_inputs):
@@ -205,13 +205,13 @@ class RealConstellationSAPSelector():
         n_agents = state.shape[1]
         n_actions = state.shape[2]
 
-        picked_actions = th.zeros(num_batches, n_agents)
+        picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
         for batch in range(num_batches):
             if np.random.rand() < self.epsilon:
                 picked_actions[batch, :] = th.randperm(n_agents)
             else:
                 # Solve the assignment problem for each batch, converting to numpy first
-                top_M_benefits_from_q_values = agent_inputs[batch, :, :].detach()
+                top_M_benefits_from_q_values = agent_inputs[batch, :, :].detach().cpu()
 
                 #Pop the last column off of top_M_benefits_from_q_values
                 baseline_action_benefit = top_M_benefits_from_q_values[:, -1]
@@ -221,12 +221,13 @@ class RealConstellationSAPSelector():
                 benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n_agents, n_actions).clone()
 
                 #find M max indices in total_agent_benefits_by_task
-                top_agent_tasks = np.argsort(-state[batch,:,:], axis=-1)[:, :self.args.env_args['M']]
+                top_agent_tasks = th.topk(state[batch, :, :], k=self.args.env_args['M'], dim=-1).indices
 
-                #dawg idk how this line works but it puts the top M benefits in the right place
-                benefit_matrix_from_q_values[np.arange(n_agents)[:, np.newaxis], top_agent_tasks] = top_M_benefits_from_q_values
+                #find M max indices in total_agent_benefits_by_task
+                indices = th.tensor(np.indices(top_agent_tasks.shape))
+                benefit_matrix_from_q_values[indices[0], top_agent_tasks] = top_M_benefits_from_q_values
 
-                _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values, maximize=True)
+                _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values.cpu(), maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)
 
         return picked_actions
