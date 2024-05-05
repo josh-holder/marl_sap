@@ -199,7 +199,7 @@ def run_sequential(args, logger):
     # start training
     episode = 0
     last_test_T = -args.test_interval - 1
-    last_test_T = 0 #changing this for now so we get into training quicker
+    # last_test_T = 0 #changing this for now so we get into training quicker
     last_log_T = 0
     model_save_time = 0
 
