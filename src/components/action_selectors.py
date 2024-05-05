@@ -314,7 +314,6 @@ class RealConstEpsGrSAPTestActionSelector():
             random_actions = Categorical(avail_actions.float()).sample().long()
 
             picked_actions = pick_random * random_actions + (1 - pick_random) * benefit_matrix_from_q_values.max(dim=2)[1]
-            print(picked_actions)
             return picked_actions
 
 REGISTRY["real_const_epsgr_sap_test"] = RealConstEpsGrSAPTestActionSelector
