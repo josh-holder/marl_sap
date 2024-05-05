@@ -10,11 +10,9 @@ import scipy.optimize
 
 import sys
 sys.path.append('/Users/joshholder/code/satellite-constellation')
-from constellation_sim.constellation_generators import get_prox_mats_random_tasks_existing_const, gen_constellation_wout_tasks
-from constellation_sim.ConstellationSim import ConstellationSim
+from envs.HighPerformanceConstellationSim import HighPerformanceConstellationSim
 
-import os
-os.environ["NUMBA_DEBUG_DUMP_BYTECODE"] = "0"
+import time
 
 class RealConstellationEnv(Env):
     def __init__(self,
@@ -29,13 +27,6 @@ class RealConstellationEnv(Env):
         self.logger = logging.getLogger(__name__)
         self.seed(seed)
 
-        #Assume altitude 550, fov=60, fov_based_proximities, dt=1min, isl_dist=4000
-        self.const = gen_constellation_wout_tasks(num_planes, num_sats_per_plane)
-        #propogate orbits up front, and then use the same orbits for each episode,
-        #while changing tasks and task locations
-        self.const.propagate_orbits(episode_step_limit)
-        self.graphs = self.const.graph_over_time
-
         self.n_agents = num_planes * num_sats_per_plane
 
         self.num_tasks = m
@@ -44,6 +35,11 @@ class RealConstellationEnv(Env):
 
         if sat_prox_mat is None or graphs is None:
             self.constant_benefits = False
+            st = time.time()
+            #Assume altitude 550, fov=60, fov_based_proximities, dt=1min, isl_dist=4000. Propagate orbits in advance.
+            self.const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T=episode_step_limit)
+            self.graphs = self.const.graphs
+            print(f"Time to generate constellation: {time.time()-st:.2f}s")
         else:
             self.sat_prox_mat = sat_prox_mat
             self.graphs = graphs
@@ -92,7 +88,9 @@ class RealConstellationEnv(Env):
         for i in range(self.n_agents):
             num_times_tasks_completed[assignments[i]] += 1
 
+        #Update the rewards and current assignment
         rewards = []
+        self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
         for i in range(self.n_agents):
             chosen_task = assignments[i]
             if self.curr_benefits[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
@@ -100,13 +98,9 @@ class RealConstellationEnv(Env):
             else:
                 rewards.append(self.curr_benefits[i, chosen_task, 0])
 
+            self.curr_assignment[i, chosen_task] = 1
         self.k += 1
-
-        #Update the current assignment:
-        self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
-        for i in range(self.n_agents):
-            self.curr_assignment[i, assignments[i]] = 1
-
+            
         done = self.k >= self.episode_step_limit
 
         #Build observation for next step
@@ -116,7 +110,7 @@ class RealConstellationEnv(Env):
         if not done:
             effective_L = min(self.L, self.episode_step_limit - self.k)
             self.curr_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+effective_L], self.curr_assignment, self.lambda_)
-
+            self.curr_benefits += np.random.rand(*self.curr_benefits.shape) * 1e-6 #add a small amount of noise to break ties
         return rewards, done, {}
 
     def reset(self):
@@ -126,11 +120,12 @@ class RealConstellationEnv(Env):
 
         if not self.constant_benefits:
             #Remove the tasks from the constellation and generate new ones
-            self.sat_prox_mat = get_prox_mats_random_tasks_existing_const(self.const, self.num_tasks, self.episode_step_limit)
+            self.sat_prox_mat = self.const.get_proximities_for_random_tasks(self.num_tasks)
         else:
             pass #if benefits are constant, do nothing because you should use the same benefit matrix
 
         self.curr_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+self.L], self.curr_assignment, self.lambda_)
+        self.curr_benefits += np.random.rand(*self.curr_benefits.shape) * 1e-6 #add a small amount of noise to break ties
         self._obs = self._build_obs()
 
         return self.get_obs(), self.get_state()
@@ -145,22 +140,26 @@ class RealConstellationEnv(Env):
          - neighboring_other_benefits, a N x M//2 x L matrix with the benefits for the OTHER top M//2 tasks for the N agents who most directly compete for the top M tasks.
             (this should give agents an intuition about how many other good options competing agents have.)
         """
+        effective_L = self.curr_benefits.shape[-1]
+
         observations = []
+
+        total_curr_benefits = self.curr_benefits.sum(axis=-1)
         for i in range(self.n_agents):
             # ~~~ Get the local benefits for agent i ~~~
             agent_benefits = self.curr_benefits[i,:,:]
-            effective_L = agent_benefits.shape[-1]
 
-            total_agent_benefits_by_task = np.sum(agent_benefits, axis=-1)
+            total_agent_benefits = total_curr_benefits[i,:]
 
-            #find M max indices in total_agent_benefits_by_task
-            top_agent_tasks = np.argsort(-total_agent_benefits_by_task)[:self.M]
+            #find M max indices in total_agent_benefits
+            top_agent_tasks = np.argsort(-total_agent_benefits)[:self.M]
             local_benefits = np.zeros((self.M, self.L))
             local_benefits[:,:effective_L] = agent_benefits[top_agent_tasks, :]
 
             #Determine the N agents who most directly compete with agent i
             # (i.e. the N agents with the highest total benefit for the top M tasks)
-            total_benefits_for_top_M_tasks = np.sum(self.curr_benefits[:,top_agent_tasks,:], axis=-1)
+            # total_benefits_for_top_M_tasks = np.sum(self.curr_benefits[:,top_agent_tasks,:], axis=-1)
+            total_benefits_for_top_M_tasks = total_curr_benefits[:, top_agent_tasks]
             best_task_benefit_by_agent = np.max(total_benefits_for_top_M_tasks, axis=1)
             best_task_benefit_by_agent[i] = -np.inf #set agent i to a really low value so it doesn't show up in the sort
             top_N_agents = np.argsort(-best_task_benefit_by_agent)[:self.N]
@@ -170,11 +169,14 @@ class RealConstellationEnv(Env):
             neighboring_benefits[:,:,:effective_L] = self.curr_benefits[top_N_agents[:, np.newaxis], top_agent_tasks, :]
 
             # ~~~ Get the global benefits for agent i ~~~
-            benefits_without_top_M_tasks = np.copy(self.curr_benefits)
-            benefits_without_top_M_tasks[:, top_agent_tasks, :] = -np.inf
-            top_N_agents_benefits_without_top_M_tasks = benefits_without_top_M_tasks[top_N_agents, :, :].sum(axis=-1)
+            # benefits_without_top_M_tasks = np.copy(self.curr_benefits)
+            total_benefits_without_top_M_tasks = np.copy(total_curr_benefits)
+            total_benefits_without_top_M_tasks[:, top_agent_tasks] = -np.inf
+
+            # top_N_agents_benefits_without_top_M_tasks = benefits_without_top_M_tasks[top_N_agents, :, :].sum(axis=-1)
+            top_N_agents_total_benefits_without_top_M_tasks = total_benefits_without_top_M_tasks[top_N_agents, :]
             #take the top M//2 entries from every row
-            top_N_agents_top_M_2_other_benefit_indices = np.argsort(top_N_agents_benefits_without_top_M_tasks, axis=-1)[:, -self.M//2:]
+            top_N_agents_top_M_2_other_benefit_indices = np.argsort(top_N_agents_total_benefits_without_top_M_tasks, axis=-1)[:, -self.M//2:]
 
             neighboring_other_benefits = np.zeros((self.N, self.M//2, self.L))
             neighboring_other_benefits[:,:,:effective_L] = self.curr_benefits[top_N_agents[:, np.newaxis], top_N_agents_top_M_2_other_benefit_indices, :]

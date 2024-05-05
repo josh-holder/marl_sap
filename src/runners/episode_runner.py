@@ -2,7 +2,7 @@ from envs import REGISTRY as env_REGISTRY
 from functools import partial
 from components.episode_buffer import EpisodeBatch
 import numpy as np
-
+import time
 class EpisodeRunner:
     def __init__(self, args, logger):
         self.args = args
@@ -25,8 +25,12 @@ class EpisodeRunner:
         self.log_train_stats_t = -1000000
 
     def setup(self, scheme, groups, preprocess, mac):
-        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
-                                 preprocess=preprocess, device=self.args.device)
+        if not self.args.use_mps_action_selection:
+            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
+                                    preprocess=preprocess, device="cpu")
+        else:
+            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
+                                    preprocess=preprocess, device=self.args.device)
         self.mac = mac
 
     def get_env_info(self):
@@ -44,13 +48,15 @@ class EpisodeRunner:
         self.t = 0
 
     def run(self, test_mode=False):
+        st = time.time()
         self.reset() #empty batch, reset environment, t=0
-
+        print(f"Reset time: {time.time() - st}")
         terminated = False
         episode_return = 0
         #Initialize RNN hidden state for each agent
         self.mac.init_hidden(batch_size=self.batch_size)
 
+        st = time.time()
         while not terminated:
             pre_transition_data = {
                 "state": [self.env.get_state()],
@@ -83,6 +89,8 @@ class EpisodeRunner:
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
+
+        print(f"Time to run env and choose actions: {time.time() - st}")
 
         last_data = {
             "state": [self.env.get_state()],

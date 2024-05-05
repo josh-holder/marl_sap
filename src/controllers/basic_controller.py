@@ -1,6 +1,7 @@
 from modules.agents import REGISTRY as agent_REGISTRY
 from components.action_selectors import REGISTRY as action_REGISTRY
 import torch as th
+from scipy.special import softmax
 
 # This multi-agent controller shares parameters between agents
 class BasicMAC:
@@ -18,14 +19,17 @@ class BasicMAC:
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
-        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode)
+        agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode, action_selection_mode=True)
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode, state=ep_batch["state"][:, t_ep])
         return chosen_actions
 
-    def forward(self, ep_batch, t, test_mode=False):
+    def forward(self, ep_batch, t, test_mode=False, action_selection_mode=False):
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
-        agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states) #note that hidden state is unused if RNN not used
+        if action_selection_mode and not self.args.use_mps_action_selection:
+            agent_outs, self.hidden_states = self.selector_agent(agent_inputs, self.hidden_states)
+        else:
+            agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states) #note that hidden state is unused if RNN not used
 
         # Softmax the agent outputs if they're policy logits
         if self.agent_output_type == "pi_logits":
@@ -34,7 +38,11 @@ class BasicMAC:
                 # Make the logits for unavailable actions very negative to minimise their affect on the softmax
                 reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n_agents, -1)
                 agent_outs[reshaped_avail_actions == 0] = -1e10
-            agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
+            
+            if self.args.use_mps_action_selection:
+                agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
+            else: #otherwise, take softmax such that it remains on cpu
+                agent_outs = softmax(agent_outs, dim=-1)
 
         return agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
 
@@ -57,7 +65,12 @@ class BasicMAC:
         self.agent.load_state_dict(th.load("{}/agent.th".format(path), map_location=lambda storage, loc: storage))
 
     def _build_agents(self, input_shape):
-        self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
+        self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args) #Agent for training, potentially on GPU
+        if not self.args.use_mps_action_selection:
+            self.selector_agent = agent_REGISTRY[self.args.agent](input_shape, self.args) #Agent for selecting actions, always on CPU
+
+    def update_action_selector_agent(self):
+        self.selector_agent.load_state_dict(self.agent.state_dict())
 
     def _build_inputs(self, batch, t):
         # Assumes homogenous agents with flat observations.

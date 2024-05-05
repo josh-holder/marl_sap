@@ -31,7 +31,7 @@ def run(_run, _config, _log):
     logger = Logger(_log)
 
     #Don't print config if you're passing in benefits_over_time, because its too large printed
-    if _config["env_args"].get("benefits_over_time", None) is None:
+    if _config["env_args"].get("sat_prox_mat", None) is None:
         _log.info("Experiment Parameters:")
         experiment_params = pprint.pformat(_config, indent=4, width=1)
         _log.info("\n\n" + experiment_params + "\n")
@@ -199,6 +199,7 @@ def run_sequential(args, logger):
     # start training
     episode = 0
     last_test_T = -args.test_interval - 1
+    last_test_T = 0 #changing this for now so we get into training quicker
     last_log_T = 0
     model_save_time = 0
 
@@ -231,7 +232,6 @@ def run_sequential(args, logger):
         # Execute test runs once in a while
         n_test_runs = max(1, args.test_nepisode // runner.batch_size)
         if (runner.t_env - last_test_T) / args.test_interval >= 1.0:
-
             logger.console_logger.info(
                 "t_env: {} / {}".format(runner.t_env, args.t_max)
             )
@@ -245,6 +245,7 @@ def run_sequential(args, logger):
 
             last_test_T = runner.t_env
             for _ in range(n_test_runs):
+                print(f"RUNNING TEST RUN {_}/{n_test_runs}")
                 runner.run(test_mode=True)
 
         if args.save_model and (

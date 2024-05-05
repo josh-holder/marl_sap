@@ -2,18 +2,24 @@ from main import experiment_run
 from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
+import time
+import cProfile
 import sys
 sys.path.append('/Users/joshholder/code/satellite-constellation')
 
 from controllers.basic_controller import BasicMAC
 from envs.mock_constellation_env import generate_benefits_over_time, MockConstellationEnv
 from envs.power_constellation_env import PowerConstellationEnv
+from envs.real_constellation_env import RealConstellationEnv
 
 from algorithms.solve_w_haal import solve_w_haal
 from algorithms.solve_randomly import solve_randomly
 from algorithms.solve_greedily import solve_greedily
 from algorithms.solve_wout_handover import solve_wout_handover
 from common.methods import *
+
+from envs.HighPerformanceConstellationSim import HighPerformanceConstellationSim
+from constellation_sim.constellation_generators import get_prox_mat_and_graphs_random_tasks
 
 def mock_constellation_test():
     n = 10
@@ -208,5 +214,62 @@ def neighborhood_benefits_test():
     
     vdn_exp = experiment_run(params, explicit_dict_items, verbose=True)
 
+def real_constellation_test():
+    num_planes = 10
+    num_sats_per_plane = 10
+    n = num_planes * num_sats_per_plane
+    m = 150
+    episode_step_limit = 100
+    L = 3
+    lambda_ = 0.5
+
+    N = 10
+    M = 10
+
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, episode_step_limit)
+    sat_prox_mat = const.get_proximities_for_random_tasks(m)
+
+    env = RealConstellationEnv(num_planes, num_sats_per_plane, m, N, M, L, episode_step_limit, lambda_, sat_prox_mat=sat_prox_mat, graphs=const.graphs)
+    env.reset()
+
+    #EVALUATE VDN
+    print('Evaluating IQL SAP')
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed555633866_2024-05-04 22:56:32.623378'
+    params = [
+        'src/main.py',
+        '--config=iql_sap_custom_cnn',
+        '--env-config=real_constellation_env',
+        'with',
+        f'checkpoint_path={iql_sap_model_path}',
+        'test_nepisode=1',
+        'evaluate=True',
+        ]
+    explicit_dict_items = {
+        'env_args': {'sat_prox_mat': sat_prox_mat,
+                     'episode_step_limit': episode_step_limit,
+                     }
+    }
+    
+    iql_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
+    iql_sap_val = float(iql_sap_exp.result[1])
+    iql_sap_actions = iql_sap_exp.result[0]
+    iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
+    print('IQL SAP:', iql_sap_val)
+
+    env.reset()
+
+    _, haal_val = solve_w_haal(env, L)
+    print(f'HAAL, L={L}:', haal_val)
+
+    _, haal_val = solve_w_haal(env, 1)
+    print(f'HAAL, L={1}:', haal_val)
+
+    _, nha_val = solve_wout_handover(env)
+    print('Without Handover:', nha_val)
+
+    _, greedy_val = solve_greedily(env)
+    print('Greedy:', greedy_val)
+
+
 if __name__ == "__main__":
-    neighborhood_benefits_test()
+    real_constellation_test()
