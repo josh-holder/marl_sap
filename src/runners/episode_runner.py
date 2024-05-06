@@ -89,6 +89,7 @@ class EpisodeRunner:
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
+        print(episode_return)
 
         print(f"Time to run env and choose actions: {time.time() - st}")
 
@@ -114,6 +115,7 @@ class EpisodeRunner:
 
         if not test_mode:
             self.t_env += self.t
+            cur_stats["steps"] = self.t_env
 
         cur_returns.append(episode_return)
 

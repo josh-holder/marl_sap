@@ -1,7 +1,7 @@
 import torch as th
 import numpy as np
 from types import SimpleNamespace as SN
-
+import sys
 
 class EpisodeBatch:
     def __init__(self,
@@ -125,6 +125,7 @@ class EpisodeBatch:
                 v = target[k][_slices]
                 for transform in self.preprocess[k][1]:
                     v = transform.transform(v)
+                v = v.to(dtype) #ensure that onehot actions are cast to the correct dtype
                 target[new_k][_slices] = v.view_as(target[new_k][_slices])
 
     def _check_safe_view(self, v, dest):

@@ -181,9 +181,6 @@ class ParallelRunner:
             # Add the pre-transition data
             self.batch.update(pre_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=True)
 
-        if not test_mode:
-            self.t_env += self.env_steps_this_run
-
         # Get stats back for each env
         for parent_conn in self.parent_conns:
             parent_conn.send(("get_stats",None))
@@ -202,6 +199,10 @@ class ParallelRunner:
         cur_stats["ep_length"] = sum(episode_lengths) + cur_stats.get("ep_length", 0)
 
         cur_returns.extend(episode_returns)
+
+        if not test_mode:
+            self.t_env += self.env_steps_this_run
+            cur_stats["steps"] = self.t_env
 
         n_test_runs = max(1, self.args.test_nepisode // self.batch_size) * self.batch_size
         if test_mode and (len(self.test_returns) == n_test_runs):

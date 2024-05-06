@@ -56,18 +56,18 @@ class FilteredSAPQLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-        rewards = batch["rewards"][:, :-1]
-        actions = batch["actions"][:, :-1]
+        rewards = batch["rewards"][:, :-1].float()
+        actions = batch["actions"][:, :-1].to(th.int64)
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
-        avail_actions = batch["avail_actions"]
+        avail_actions = batch["avail_actions"].to(th.int64)
 
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
 
-        state = batch["state"]
+        state = batch["state"].float()
         top_agent_tasks = th.topk(state, k=self.args.env_args['M'], dim=-1).indices
 
         # Calculate estimated Q-Values
@@ -218,6 +218,7 @@ class FilteredSAPQLearner:
         th.save(self.optimiser.state_dict(), "{}/opt.th".format(path))
 
     def load_models(self, path):
+        print("LOADING FROM: ", path)
         self.mac.load_models(path)
         # Not quite right but I don't want to save target networks
         self.target_mac.load_models(path)

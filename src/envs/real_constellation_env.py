@@ -61,7 +61,7 @@ class RealConstellationEnv(Env):
 
         #Initialize to None so far
         self.curr_assignment = None
-        self.curr_benefits = None
+        self.curr_benefits = None #this is the benefits for this timestep, with the small amount of noise added to incentivize exploration
 
         self.bids_as_actions = bids_as_actions
         if self.bids_as_actions:
@@ -88,29 +88,33 @@ class RealConstellationEnv(Env):
         for i in range(self.n_agents):
             num_times_tasks_completed[assignments[i]] += 1
 
+        #Adjust the benefits matrix to account for handover penalties
+        effective_L = min(self.L, self.episode_step_limit - self.k)
+        adj_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+effective_L], self.curr_assignment, self.lambda_)
+
         #Update the rewards and current assignment
         rewards = []
         self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
         for i in range(self.n_agents):
             chosen_task = assignments[i]
-            if self.curr_benefits[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
-                rewards.append(self.curr_benefits[i, chosen_task, 0] / num_times_tasks_completed[chosen_task])
+            if adj_benefits[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
+                rewards.append(adj_benefits[i, chosen_task, 0] / num_times_tasks_completed[chosen_task])
             else:
-                rewards.append(self.curr_benefits[i, chosen_task, 0])
+                rewards.append(adj_benefits[i, chosen_task, 0])
 
             self.curr_assignment[i, chosen_task] = 1
         self.k += 1
             
         done = self.k >= self.episode_step_limit
 
-        #Build observation for next step
-        self._obs = self._build_obs()
+        #Build observation for the next step
+        self._obs = self._build_obs(actions, done)
 
-        #Update the current benefits (handover adjusted). Only if not done, or else there are no curr benefits.
-        if not done:
-            effective_L = min(self.L, self.episode_step_limit - self.k)
-            self.curr_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+effective_L], self.curr_assignment, self.lambda_)
-            self.curr_benefits += np.random.rand(*self.curr_benefits.shape) * 1e-6 #add a small amount of noise to break ties
+        # #Update the current benefits (handover adjusted). Only if not done, or else there are no curr benefits.
+        # if not done:
+        #     effective_L = min(self.L, self.episode_step_limit - self.k)
+        #     self.curr_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+effective_L], self.curr_assignment, self.lambda_)
+        #     self.curr_benefits += np.random.rand(*self.curr_benefits.shape) * 1e-6 #add a small amount of noise to break ties
         return rewards, done, {}
 
     def reset(self):
@@ -124,13 +128,11 @@ class RealConstellationEnv(Env):
         else:
             pass #if benefits are constant, do nothing because you should use the same benefit matrix
 
-        self.curr_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+self.L], self.curr_assignment, self.lambda_)
-        self.curr_benefits += np.random.rand(*self.curr_benefits.shape) * 1e-6 #add a small amount of noise to break ties
         self._obs = self._build_obs()
 
         return self.get_obs(), self.get_state()
 
-    def _build_obs(self):
+    def _build_obs(self, actions=None, done=False):
         """
         Builds the observation for the next step.
         For agent i, observations are composed of the following components:
@@ -140,49 +142,57 @@ class RealConstellationEnv(Env):
          - neighboring_other_benefits, a N x M//2 x L matrix with the benefits for the OTHER top M//2 tasks for the N agents who most directly compete for the top M tasks.
             (this should give agents an intuition about how many other good options competing agents have.)
         """
-        effective_L = self.curr_benefits.shape[-1]
+        if not done:
+            effective_L = min(self.L, self.episode_step_limit - self.k)
 
-        observations = []
+            observations = []
 
-        total_curr_benefits = self.curr_benefits.sum(axis=-1)
-        for i in range(self.n_agents):
-            # ~~~ Get the local benefits for agent i ~~~
-            agent_benefits = self.curr_benefits[i,:,:]
+            self.curr_benefits = self.sat_prox_mat[:,:,self.k:self.k+effective_L] + np.random.rand(self.n_agents, self.num_tasks, effective_L) * 1e-6 #add a small amount of noise to break ties
+            total_curr_benefits = self.curr_benefits.sum(axis=-1)
+            for i in range(self.n_agents):
+                # ~~~ Get the local benefits for agent i ~~~
+                agent_benefits = self.curr_benefits[i,:,:]
 
-            total_agent_benefits = total_curr_benefits[i,:]
+                total_agent_benefits = total_curr_benefits[i,:]
 
-            #find M max indices in total_agent_benefits
-            top_agent_tasks = np.argsort(-total_agent_benefits)[:self.M]
-            local_benefits = np.zeros((self.M, self.L))
-            local_benefits[:,:effective_L] = agent_benefits[top_agent_tasks, :]
+                #find M max indices in total_agent_benefits
+                top_agent_tasks = np.argsort(-total_agent_benefits)[:self.M]
+                local_benefits = np.zeros((self.M, self.L))
+                local_benefits[:,:effective_L] = agent_benefits[top_agent_tasks, :]
 
-            #Determine the N agents who most directly compete with agent i
-            # (i.e. the N agents with the highest total benefit for the top M tasks)
-            # total_benefits_for_top_M_tasks = np.sum(self.curr_benefits[:,top_agent_tasks,:], axis=-1)
-            total_benefits_for_top_M_tasks = total_curr_benefits[:, top_agent_tasks]
-            best_task_benefit_by_agent = np.max(total_benefits_for_top_M_tasks, axis=1)
-            best_task_benefit_by_agent[i] = -np.inf #set agent i to a really low value so it doesn't show up in the sort
-            top_N_agents = np.argsort(-best_task_benefit_by_agent)[:self.N]
+                #Determine the N agents who most directly compete with agent i
+                # (i.e. the N agents with the highest total benefit for the top M tasks)
+                total_benefits_for_top_M_tasks = total_curr_benefits[:, top_agent_tasks]
+                best_task_benefit_by_agent = np.max(total_benefits_for_top_M_tasks, axis=1)
+                best_task_benefit_by_agent[i] = -np.inf #set agent i to a really low value so it doesn't show up in the sort
+                top_N_agents = np.argsort(-best_task_benefit_by_agent)[:self.N]
 
-            # ~~~ Get the neighboring benefits for agent i ~~~
-            neighboring_benefits = np.zeros((self.N, self.M, self.L))
-            neighboring_benefits[:,:,:effective_L] = self.curr_benefits[top_N_agents[:, np.newaxis], top_agent_tasks, :]
+                # ~~~ Get the neighboring benefits for agent i ~~~
+                neighboring_benefits = np.zeros((self.N, self.M, self.L))
+                neighboring_benefits[:,:,:effective_L] = self.curr_benefits[top_N_agents[:, np.newaxis], top_agent_tasks, :]
 
-            # ~~~ Get the global benefits for agent i ~~~
-            # benefits_without_top_M_tasks = np.copy(self.curr_benefits)
-            total_benefits_without_top_M_tasks = np.copy(total_curr_benefits)
-            total_benefits_without_top_M_tasks[:, top_agent_tasks] = -np.inf
+                # ~~~ Get the global benefits for agent i ~~~
+                total_benefits_without_top_M_tasks = np.copy(total_curr_benefits)
+                total_benefits_without_top_M_tasks[:, top_agent_tasks] = -np.inf
 
-            # top_N_agents_benefits_without_top_M_tasks = benefits_without_top_M_tasks[top_N_agents, :, :].sum(axis=-1)
-            top_N_agents_total_benefits_without_top_M_tasks = total_benefits_without_top_M_tasks[top_N_agents, :]
-            #take the top M//2 entries from every row
-            top_N_agents_top_M_2_other_benefit_indices = np.argsort(top_N_agents_total_benefits_without_top_M_tasks, axis=-1)[:, -self.M//2:]
+                top_N_agents_total_benefits_without_top_M_tasks = total_benefits_without_top_M_tasks[top_N_agents, :]
+                #take the top M//2 entries from every row
+                top_N_agents_top_M_2_other_benefit_indices = np.argsort(top_N_agents_total_benefits_without_top_M_tasks, axis=-1)[:, -self.M//2:]
 
-            neighboring_other_benefits = np.zeros((self.N, self.M//2, self.L))
-            neighboring_other_benefits[:,:,:effective_L] = self.curr_benefits[top_N_agents[:, np.newaxis], top_N_agents_top_M_2_other_benefit_indices, :]
+                neighboring_other_benefits = np.zeros((self.N, self.M//2, self.L))
+                neighboring_other_benefits[:,:,:effective_L] = self.curr_benefits[top_N_agents[:, np.newaxis], top_N_agents_top_M_2_other_benefit_indices, :]
 
-            #flatten local_benefits, neighboring_benefits, and neighboring_other_benefits
-            observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten())))
+                # ~~~ Get agent previous actions ~~~
+                if actions is not None:
+                    agent_action_obs = np.where(top_agent_tasks == actions[i], 1, 0)
+                else:
+                    agent_action_obs = np.zeros(self.M)
+
+                #flatten local_benefits, neighboring_benefits, and neighboring_other_benefits
+                observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), agent_action_obs)))
+        else: #otherwise, if done there are no benefits to observe. (and no actions either, because we can't do filtering based on them.)
+            self.curr_benefits = np.zeros((self.n_agents, self.num_tasks, self.L))
+            observations = [np.zeros(self.get_obs_size())] * self.n_agents
 
         return observations
 
@@ -205,13 +215,12 @@ class RealConstellationEnv(Env):
 
     def get_obs_size(self):
         """ Returns the shape of the observation """
-        # return ((self.M, self.L), (self.N, self.M, self.L), (self.N, self.M//2, self.L))
-        return self.M*self.L + self.N*self.M*self.L + self.N*self.M//2*self.L + 0 #for now, we have no extra state information
+        return self.M*self.L + self.N*self.M*self.L + self.N*self.M//2*self.L + self.M + 0 #for now, we have no extra state information
 
     def get_state(self):
         #Return the benefit matrix so we can map the top M tasks back to it.
         #Can sum over the last axis to get the total benefit for each task, because that's all we need here.
-        return self.curr_benefits.sum(axis=-1) 
+        return self.curr_benefits.sum(axis=-1)
 
     def get_state_size(self):
         """ Returns the shape of the state"""

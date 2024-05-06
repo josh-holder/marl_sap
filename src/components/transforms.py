@@ -1,5 +1,5 @@
 import torch as th
-
+import torch.nn.functional as F
 
 class Transform:
     def transform(self, tensor):
@@ -19,4 +19,4 @@ class OneHot(Transform):
         return y_onehot.float()
 
     def infer_output_info(self, vshape_in, dtype_in):
-        return (self.out_dim,), th.float32
+        return (self.out_dim,), dtype_in

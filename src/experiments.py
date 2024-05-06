@@ -234,7 +234,7 @@ def real_constellation_test():
 
     #EVALUATE VDN
     print('Evaluating IQL SAP')
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed555633866_2024-05-04 22:56:32.623378'
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed353316732_2024-05-05 15:35:26.432238'
     params = [
         'src/main.py',
         '--config=iql_sap_custom_cnn',
@@ -243,6 +243,7 @@ def real_constellation_test():
         f'checkpoint_path={iql_sap_model_path}',
         'test_nepisode=1',
         'evaluate=True',
+        'load_step=300400'
         ]
     explicit_dict_items = {
         'env_args': {'sat_prox_mat': sat_prox_mat,

@@ -111,17 +111,29 @@ def run_sequential(args, logger):
     args.state_shape = env_info["state_shape"]
 
     # Default/Base scheme
-    scheme = {
-        "state": {"vshape": env_info["state_shape"]},
-        "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
-        "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
+    # scheme = {
+    #     "state": {"vshape": env_info["state_shape"]},
+    #     "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
+    #     "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
+    #     "avail_actions": {
+    #         "vshape": (env_info["n_actions"],),
+    #         "group": "agents",
+    #         "dtype": th.int,
+    #     },
+    #     "rewards": {"vshape": (1,)},
+    #     "terminated": {"vshape": (1,), "dtype": th.uint8},
+    # }
+    scheme = { #half precision
+        "state": {"vshape": env_info["state_shape"], "dtype": th.float16},
+        "obs": {"vshape": env_info["obs_shape"], "group": "agents", "dtype": th.float16},
+        "actions": {"vshape": (1,), "group": "agents", "dtype": th.int16},
         "avail_actions": {
             "vshape": (env_info["n_actions"],),
             "group": "agents",
-            "dtype": th.int,
+            "dtype": th.bool,
         },
-        "rewards": {"vshape": (1,)},
-        "terminated": {"vshape": (1,), "dtype": th.uint8},
+        "rewards": {"vshape": (1,), "dtype": th.float16},
+        "terminated": {"vshape": (1,), "dtype": th.bool},
     }
     preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["n_actions"])])}
 
@@ -132,7 +144,7 @@ def run_sequential(args, logger):
         preprocess = {}
     if not getattr(args, "cooperative_rewards", False):
         #Rewards are per-agent, so n_agents-dimensional
-        scheme["rewards"] = {"vshape": (env_info["n_agents"],)}
+        scheme["rewards"] = {"vshape": (env_info["n_agents"],), "dtype": th.float16}
 
     groups = {"agents": args.n_agents}
 
@@ -199,7 +211,7 @@ def run_sequential(args, logger):
     # start training
     episode = 0
     last_test_T = -args.test_interval - 1
-    # last_test_T = 0 #changing this for now so we get into training quicker
+    last_test_T = 0 #changing this for now so we get into training quicker
     last_log_T = 0
     model_save_time = 0
 
