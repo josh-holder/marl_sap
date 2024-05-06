@@ -202,7 +202,7 @@ class ParallelRunner:
 
         if not test_mode:
             self.t_env += self.env_steps_this_run
-            cur_stats["steps"] = self.t_env
+            self.logger.log_stat("steps", self.t_env, self.t_env)
 
         n_test_runs = max(1, self.args.test_nepisode // self.batch_size) * self.batch_size
         if test_mode and (len(self.test_returns) == n_test_runs):

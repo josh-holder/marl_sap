@@ -255,6 +255,7 @@ class RealConstEpsGrSAPTestActionSelector():
         self.epsilon = self.schedule.eval(0)
 
     def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
+        assert state is not None, "Need state to figure out which are the top M tasks for each agent."
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 

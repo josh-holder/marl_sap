@@ -115,7 +115,7 @@ class EpisodeRunner:
 
         if not test_mode:
             self.t_env += self.t
-            cur_stats["steps"] = self.t_env
+            self.logger.log_stat("steps", self.t_env, self.t_env)
 
         cur_returns.append(episode_return)
 
@@ -132,6 +132,7 @@ class EpisodeRunner:
     def _log(self, returns, stats, prefix):
         self.logger.log_stat(prefix + "return_mean", np.mean(returns), self.t_env)
         self.logger.log_stat(prefix + "return_std", np.std(returns), self.t_env)
+        self.logger.log_stat()
         returns.clear()
 
         for k, v in stats.items():

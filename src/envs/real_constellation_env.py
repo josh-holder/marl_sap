@@ -110,11 +110,6 @@ class RealConstellationEnv(Env):
         #Build observation for the next step
         self._obs = self._build_obs(actions, done)
 
-        # #Update the current benefits (handover adjusted). Only if not done, or else there are no curr benefits.
-        # if not done:
-        #     effective_L = min(self.L, self.episode_step_limit - self.k)
-        #     self.curr_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+effective_L], self.curr_assignment, self.lambda_)
-        #     self.curr_benefits += np.random.rand(*self.curr_benefits.shape) * 1e-6 #add a small amount of noise to break ties
         return rewards, done, {}
 
     def reset(self):
@@ -147,7 +142,7 @@ class RealConstellationEnv(Env):
 
             observations = []
 
-            self.curr_benefits = self.sat_prox_mat[:,:,self.k:self.k+effective_L] + np.random.rand(self.n_agents, self.num_tasks, effective_L) * 1e-6 #add a small amount of noise to break ties
+            self.curr_benefits = self.sat_prox_mat[:,:,self.k:self.k+effective_L] + np.random.rand(self.n_agents, self.num_tasks, effective_L) * 1e-4 #add a small amount of noise to break ties
             total_curr_benefits = self.curr_benefits.sum(axis=-1)
             for i in range(self.n_agents):
                 # ~~~ Get the local benefits for agent i ~~~
