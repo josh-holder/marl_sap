@@ -14,7 +14,7 @@ runner: "episode"
 buffer_size: 2000
 
 # update the target network every {} episodes
-target_update_interval_or_tau: 200
+target_update_interval_or_tau: 0.01
 
 # --- Agent parameters ---
 agent: "custom_cnn_const_agent" # Default constellation agent (multi-component benefit observation)
