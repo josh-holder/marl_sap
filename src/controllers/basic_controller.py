@@ -63,6 +63,7 @@ class BasicMAC:
 
     def load_models(self, path):
         self.agent.load_state_dict(th.load("{}/agent.th".format(path), map_location=lambda storage, loc: storage))
+        self.update_action_selector_agent() #ensure selector agent has same weights
 
     def _build_agents(self, input_shape):
         self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args) #Agent for training, potentially on GPU

@@ -2,7 +2,7 @@ env: "power_constellation_env"
 
 env_args:
   n_agents: 10
-  num_tasks: 12
+  num_tasks: 10
   episode_step_limit: 20
   L: 3
   lambda_: 0.5
