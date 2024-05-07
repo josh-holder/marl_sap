@@ -89,8 +89,6 @@ class EpisodeRunner:
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
-        print(episode_return)
-
         print(f"Time to run env and choose actions: {time.time() - st}")
 
         last_data = {

@@ -1,4 +1,4 @@
-# --- VDN SAP specific parameters ---
+# --- IQL SAP specific parameters ---
 
 # use epsilon greedy action selector
 action_selector: "real_const_sap"
@@ -33,5 +33,10 @@ learner: "filtered_sap_q_learner"
 double_q: True
 use_rnn: False
 mixer:
+
+# Pretraining configs
+use_offline_dataset: True
+offline_dataset_path: null
+pretrain_fn: "nha_pretrainer"
 
 name: "iql_sap"

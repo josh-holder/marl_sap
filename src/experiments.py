@@ -234,7 +234,7 @@ def real_constellation_test():
 
     #EVALUATE VDN
     print('Evaluating IQL SAP')
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_real_const_trained_on_nha_wout_actions'
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed264785290_2024-05-06 22:09:52.054875'
     params = [
         'src/main.py',
         '--config=iql_sap_custom_cnn',

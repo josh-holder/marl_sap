@@ -49,3 +49,10 @@ obs_last_action: True # Include the agent's last action (one_hot) in the observa
 repeat_id: 1
 label: "default_label"
 hypergroup: null
+
+# --- Pretraining configs ---
+offline_dataset: null
+offline_dataset_path: null
+pretrain_fn: null
+pretrain_batch_size_run: 2 #this seems like the sweet spot for n=100, m=150
+pretrain_batches: 1000 #Steps to train on provided replay buffer

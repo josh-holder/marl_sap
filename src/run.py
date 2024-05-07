@@ -9,6 +9,9 @@ from utils.logging import Logger
 from utils.timehelper import time_left, time_str
 from os.path import dirname, abspath
 import numpy as np
+import pickle
+
+from runners.pretrain_runner import PretrainRunner
 
 from learners import REGISTRY as le_REGISTRY
 from runners import REGISTRY as r_REGISTRY
@@ -148,15 +151,40 @@ def run_sequential(args, logger):
 
     groups = {"agents": args.n_agents}
 
-    buffer = ReplayBuffer(
-        scheme,
-        groups,
-        args.buffer_size,
-        env_info["episode_step_limit"] + 1, #max_seq_length
-        preprocess=preprocess,
-        device="cpu" if args.buffer_cpu_only else args.device,
-    )
-    
+    #LOAD OR GENERATE AN OFFLINE DATASET
+    use_offline_dataset = getattr(args, "use_offline_dataset", False)
+    if not use_offline_dataset:
+        logger.console_logger.info("No offline dataset desired - proceeding as normal.")
+        buffer = ReplayBuffer(
+            scheme,
+            groups,
+            args.buffer_size,
+            env_info["episode_step_limit"] + 1, #max_seq_length
+            preprocess=preprocess,
+            device="cpu" if args.buffer_cpu_only else args.device,
+        )
+    else:
+        if args.offline_dataset_path is None:
+            logger.console_logger.info("No offline dataset found: generating one with {}".format(args.pretrain_fn))
+            buffer = ReplayBuffer(
+                scheme,
+                groups,
+                args.buffer_size,
+                env_info["episode_step_limit"] + 1, #max_seq_length
+                preprocess=preprocess,
+                device="cpu", #always generate on the CPU
+            )
+            pretrain_runner = PretrainRunner(args, logger, buffer, scheme, groups) #need to provide scheme and groups explicitly so that the scheme doesn't contain filled
+            buffer = pretrain_runner.fill_buffer()
+            with open(f"datasets/{args.unique_token}", 'wb') as f:
+                pickle.dump(buffer, f)
+            logger.console_logger.info("Done generating and saving offline dataset.")
+        else:
+            logger.console_logger.info("Offline dataset provided: loading from {}".format(args.offline_dataset_path))
+            with open(f"datasets/{args.offline_dataset_path}.pkl", 'rb') as f:
+                buffer = pickle.load(f)
+            logger.console_logger.info("Done loading offline dataset.")
+
     # Setup multiagent controller here
     mac = mac_REGISTRY[args.mac](buffer.scheme, groups, args)
 
@@ -207,6 +235,23 @@ def run_sequential(args, logger):
             logger.print_recent_stats()
             logger.console_logger.info("Finished Evaluation")
             return actions, reward
+
+    #Train on the offline dataset.
+    if use_offline_dataset:
+        pretrain_batches = 0
+        while pretrain_batches < args.pretrain_batches:
+            if pretrain_batches % 100: logger.console_logger.info(f"Pretraining, {pretrain_batches}/{args.pretrain_batches}")
+            episode_sample = buffer.sample(args.batch_size)
+
+            # Truncate batch to only filled timesteps
+            max_ep_t = episode_sample.max_t_filled()
+            episode_sample = episode_sample[:, :max_ep_t]
+
+            #If the data from the replay buffer is on CPU, move it to GPU
+            if episode_sample.device != args.device:
+                episode_sample.to(args.device)
+
+            learner.train(episode_sample, runner.t_env, episode_num=0)
 
     # start training
     episode = 0

@@ -4,15 +4,16 @@ from components.episode_buffer import EpisodeBatch
 from multiprocessing import Pipe, Process
 import numpy as np
 import torch as th
+import scipy.optimize
 
 import time
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
-class ParallelRunner:
-
-    def __init__(self, args, logger):
+class PretrainRunner:
+    def __init__(self, args, logger, buffer, scheme, groups):
         self.args = args
         self.logger = logger
+
         self.batch_size = self.args.pretrain_batch_size_run
 
         # Make subprocesses for the envs
@@ -34,33 +35,17 @@ class ParallelRunner:
         self.episode_step_limit = self.env_info["episode_step_limit"]
 
         self.t = 0
+        self.b = 0
 
-        self.t_env = 0
+        self.buffer = buffer
 
-        self.train_returns = []
-        self.test_returns = []
-        self.train_stats = {}
-        self.test_stats = {}
+        self.pretrain_fn = pretrainerREGISTRY[self.args.pretrain_fn]
 
-        self.log_train_stats_t = -100000
-
-    def setup(self, scheme, groups, preprocess, mac):
-        if not self.args.use_mps_action_selection:
-            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
-                                    preprocess=preprocess, device="cpu")
-        else:
-            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
-                                    preprocess=preprocess, device=self.args.device)
-        self.mac = mac
-        self.scheme = scheme
-        self.groups = groups
-        self.preprocess = preprocess
+        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
+                                preprocess=self.buffer.preprocess, device="cpu")
 
     def get_env_info(self):
         return self.env_info
-
-    def save_replay(self):
-        self.parent_conns[0].send(("save_replay", None))
 
     def close_env(self):
         for parent_conn in self.parent_conns:
@@ -88,27 +73,33 @@ class ParallelRunner:
         self.batch.update(pre_transition_data, ts=0)
 
         self.t = 0
-        self.env_steps_this_run = 0
+
+    def fill_buffer(self):
+        """
+        Fills buffer until full by running individual episodes with run().
+        """
+        while self.b < self.args.buffer_size:
+            if (self.b % 100) == 0: self.logger.console_logger.info(f"Generating offline dataset: {self.b}/{self.args.buffer_size}")
+            st = time.time()
+            episode_batch = self.run()
+            self.buffer.insert_episode_batch(episode_batch)
+
+            self.b += self.batch_size
+            print(f"Time taken: {(time.time() - st)/self.batch_size} sec per batch")
+
+        return self.buffer
 
     def run(self, test_mode=False):
-        st = time.time()
         self.reset()
-        print("Reset time: ", time.time() - st)
 
-        st = time.time()
         all_terminated = False
-        episode_returns = [0 for _ in range(self.batch_size)]
-        episode_lengths = [0 for _ in range(self.batch_size)]
-        self.mac.init_hidden(batch_size=self.batch_size)
         terminated = [False for _ in range(self.batch_size)]
         envs_not_terminated = [b_idx for b_idx, termed in enumerate(terminated) if not termed]
-        final_env_infos = []  # may store extra stats like battle won. this is filled in ORDER OF TERMINATION
 
         while True:
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
-            actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated, test_mode=test_mode)
-            cpu_actions = actions.to("cpu").numpy()
+            actions = self.pretrain_fn(self.batch[:,self.t])
 
             # Update the actions taken
             actions_chosen = {
@@ -121,7 +112,7 @@ class ParallelRunner:
             for idx, parent_conn in enumerate(self.parent_conns):
                 if idx in envs_not_terminated: # We produced actions for this env
                     if not terminated[idx]: # Only send the actions to the env if it hasn't terminated
-                        parent_conn.send(("step", cpu_actions[action_idx]))
+                        parent_conn.send(("step", actions[action_idx]))
                     action_idx += 1 # actions is not a list over every env
                     if idx == 0 and test_mode and self.args.render:
                         parent_conn.send(("render", None))
@@ -151,17 +142,7 @@ class ParallelRunner:
                     # Remaining data for this current timestep
                     post_transition_data["rewards"].append((data["rewards"],))
 
-                    if getattr(self.args, "cooperative_rewards", False):
-                        episode_returns[idx] += data["rewards"]
-                    else:
-                        episode_returns[idx] += sum(data["rewards"])
-                    episode_lengths[idx] += 1
-                    if not test_mode:
-                        self.env_steps_this_run += 1
-
                     env_terminated = False
-                    if data["terminated"]:
-                        final_env_infos.append(data["info"])
                     if data["terminated"] and not data["info"].get("episode_step_limit", False):
                         env_terminated = True
                     terminated[idx] = data["terminated"]
@@ -181,50 +162,7 @@ class ParallelRunner:
             # Add the pre-transition data
             self.batch.update(pre_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=True)
 
-        # Get stats back for each env
-        for parent_conn in self.parent_conns:
-            parent_conn.send(("get_stats",None))
-
-        env_stats = []
-        for parent_conn in self.parent_conns:
-            env_stat = parent_conn.recv()
-            env_stats.append(env_stat)
-
-        cur_stats = self.test_stats if test_mode else self.train_stats
-        cur_returns = self.test_returns if test_mode else self.train_returns
-        log_prefix = "test_" if test_mode else ""
-        infos = [cur_stats] + final_env_infos
-        cur_stats.update({k: sum(d.get(k, 0) for d in infos) for k in set.union(*[set(d) for d in infos])})
-        cur_stats["n_episodes"] = self.batch_size + cur_stats.get("n_episodes", 0)
-        cur_stats["ep_length"] = sum(episode_lengths) + cur_stats.get("ep_length", 0)
-
-        cur_returns.extend(episode_returns)
-
-        if not test_mode:
-            self.t_env += self.env_steps_this_run
-
-        n_test_runs = max(1, self.args.test_nepisode // self.batch_size) * self.batch_size
-        if test_mode and (len(self.test_returns) == n_test_runs):
-            self._log(cur_returns, cur_stats, log_prefix)
-        elif self.t_env - self.log_train_stats_t >= self.args.runner_log_interval:
-            self._log(cur_returns, cur_stats, log_prefix)
-            if hasattr(self.mac.action_selector, "epsilon"):
-                self.logger.log_stat("epsilon", self.mac.action_selector.epsilon, self.t_env)
-            self.log_train_stats_t = self.t_env
-            self.logger.log_stat("steps", self.t_env, self.t_env)
-        print("Time to execute actions: ", time.time() - st)
         return self.batch
-
-    def _log(self, returns, stats, prefix):
-        self.logger.log_stat(prefix + "return_mean", np.mean(returns), self.t_env)
-        self.logger.log_stat(prefix + "return_std", np.std(returns), self.t_env)
-        returns.clear()
-
-        for k, v in stats.items():
-            if k != "n_episodes":
-                self.logger.log_stat(prefix + k + "_mean" , v/stats["n_episodes"], self.t_env)
-        stats.clear()
-
 
 def env_worker(remote, env_fn):
     # Make environment
@@ -285,3 +223,26 @@ class CloudpickleWrapper():
         import pickle
         self.x = pickle.loads(ob)
 
+pretrainerREGISTRY = {}
+
+def NHAPretrainer(batch):
+    """
+    Input: batch to take NHA action on.
+
+    Output: actions taken for the batch.
+    """
+    state = batch["state"]
+    num_batches = state.shape[0]
+    n_timesteps = state.shape[1] #this should always be 1, because we are taking one step at a time
+    n_agents = state.shape[2]
+    n_actions = state.shape[3]
+
+    picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+    
+    for batch in range(num_batches):
+        _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, 0, :, :], maximize=True)
+        picked_actions[batch, :] = th.tensor(col_ind)
+
+    return picked_actions
+
+pretrainerREGISTRY["nha_pretrainer"] = NHAPretrainer
