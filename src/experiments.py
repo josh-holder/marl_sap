@@ -234,7 +234,7 @@ def real_constellation_test():
 
     #EVALUATE VDN
     print('Evaluating IQL SAP')
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed429759312_2024-05-05 17:24:23.576621'
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_real_const_trained_on_nha_wout_actions'
     params = [
         'src/main.py',
         '--config=iql_sap_custom_cnn',
@@ -259,17 +259,29 @@ def real_constellation_test():
 
     env.reset()
 
-    _, haal_val = solve_w_haal(env, L)
-    print(f'HAAL, L={L}:', haal_val)
+    haal3_assigns, haal3_val = solve_w_haal(env, L)
+    print(f'HAAL, L={L}:', haal3_val)
 
-    _, haal_val = solve_w_haal(env, 1)
-    print(f'HAAL, L={1}:', haal_val)
+    haal1_assigns, haal1_val = solve_w_haal(env, 1)
+    print(f'HAAL, L={1}:', haal1_val)
 
-    _, nha_val = solve_wout_handover(env)
+    nha_assigns, nha_val = solve_wout_handover(env)
     print('Without Handover:', nha_val)
 
-    _, greedy_val = solve_greedily(env)
+    greedy_assigns, greedy_val = solve_greedily(env)
     print('Greedy:', greedy_val)
+
+    values = [iql_sap_val, haal3_val, haal1_val, greedy_val, nha_val]
+    handovers = [calc_handovers_generically(a) for a in [iql_sap_assigns, haal3_assigns, haal1_assigns, greedy_assigns, nha_assigns]]
+    
+    alg_names = ['IQL SAP', 'HAAL3', 'HAAL1', 'Greedy', 'Without\nHandover']
+    plt.bar(alg_names, values)
+    plt.ylabel('Value')
+    plt.show()
+
+    plt.bar(alg_names, handovers)
+    plt.ylabel('Handovers')
+    plt.show()
 
 
 if __name__ == "__main__":

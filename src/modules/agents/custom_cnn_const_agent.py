@@ -47,6 +47,7 @@ class CustomCNNConstellationAgent(nn.Module):
         global_benefits = obs[:, neighboring_benefits_end:global_benefits_end].reshape(-1, self.N, self.M//2, self.L)
 
         other_info_size = obs.shape[-1] - global_benefits_end #TODO: pipe this in to the neural networks
+        print(other_info_size)
 
         # all benefits initially have shapes of [batch_size, (N,) M, L]
         local_benefits = local_benefits.permute(0, 3, 1, 2)  # Permute to [batch_size, L, 1, M]
