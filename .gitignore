@@ -245,4 +245,8 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# DS_Store files
+.DS_Store
+wandb/
+
 # End of https://www.gitignore.io/api/linux,python,windows,pycharm+all,visualstudiocode

@@ -93,9 +93,6 @@ class RealConstellationEnv(Env):
         #Compute the state dependent benefit matrix
         beta_hat = self.beta_hat(self._state)
 
-        #Adjust the benefits matrix to account for handover penalties
-        adj_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k:self.k+effective_L], self.curr_assignment, self.lambda_)
-
         #Update the rewards and current assignment
         rewards = []
         self.curr_assignment = np.zeros((self.n, self.m))
@@ -114,7 +111,7 @@ class RealConstellationEnv(Env):
         #Build observation and state for the next step
         effective_L = min(self.L, self.T - self.k)
         curr_sat_prox_mat = self.sat_prox_mat[:,:,self.k:self.k+effective_L]
-        self._obs = self._build_obs(curr_sat_prox_mat, self.curr_assignment, done)
+        self._obs = self._build_obs(curr_sat_prox_mat, actions, done)
         self._state = self._build_state(curr_sat_prox_mat, self.curr_assignment)
 
         return rewards, done, {}
@@ -134,7 +131,7 @@ class RealConstellationEnv(Env):
 
         return self.get_obs(), self.get_state()
 
-    def _build_obs(self, curr_sat_prox_mat, curr_assignment, done):
+    def _build_obs(self, curr_sat_prox_mat, actions, done):
         """
         Builds the observation for the next step.
         For agent i, observations are composed of the following components:
@@ -185,7 +182,7 @@ class RealConstellationEnv(Env):
 
                 # ~~~ Get agent previous actions ~~~
                 if actions is not None:
-                    agent_action_obs = curr_assignment[i,:] np.where(top_agent_tasks == actions[i], 1, 0)
+                    agent_action_obs = np.where(top_agent_tasks == actions[i], 1, 0)
                 else:
                     agent_action_obs = np.zeros(self.M)
 
