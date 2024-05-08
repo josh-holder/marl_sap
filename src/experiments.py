@@ -49,8 +49,8 @@ def mock_constellation_test():
     
     vdn_exp = experiment_run(params, explicit_dict_items, verbose=False)
     vdn_val = vdn_exp.result[1]
-    vdn_actions = vdn_exp.result[0]
-    vdn_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in vdn_actions]
+    vdm = vdn_exp.result[0]
+    vdn_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in vdm]
     
     #EVALUATE AUCTION VDN
     print('Evaluating Auction VDN')
@@ -123,16 +123,17 @@ def power_constellation_test():
         f'checkpoint_path={vdn_model_path}',
         'test_nepisode=1',
         'evaluate=True',
+        'use_offline_dataset=False'
         ]
     explicit_dict_items = {
         'env_args': {'sat_prox_mat': sat_prox_mat,
-                     'episode_step_limit': T}
+                     'T': T}
     }
     
     vdn_exp = experiment_run(params, explicit_dict_items, verbose=True)
     vdn_val = vdn_exp.result[1]
-    vdn_actions = vdn_exp.result[0]
-    vdn_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in vdn_actions]
+    vdm = vdn_exp.result[0]
+    vdn_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in vdm]
     
     #EVALUATE AUCTION VDN
     print('Evaluating Auction VDN')
@@ -145,10 +146,11 @@ def power_constellation_test():
         f'checkpoint_path={vdn_sap_model_path}',
         'test_nepisode=1',
         'evaluate=True',
+        'use_offline_dataset=False'
         ]
     explicit_dict_items = {
         'env_args': {'sat_prox_mat': sat_prox_mat,
-                     'episode_step_limit': T}
+                     'T': T}
     }
     
     vdn_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
@@ -209,7 +211,7 @@ def neighborhood_benefits_test():
                      'N': 2,
                      'L': 2,
                      'm': 4,
-                     'episode_step_limit': 1}
+                     'T': 1}
     }
     
     vdn_exp = experiment_run(params, explicit_dict_items, verbose=True)
@@ -219,22 +221,49 @@ def real_constellation_test():
     num_sats_per_plane = 10
     n = num_planes * num_sats_per_plane
     m = 150
-    episode_step_limit = 100
+    T = 100
     L = 3
     lambda_ = 0.5
 
     N = 10
     M = 10
 
-    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, episode_step_limit)
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
     sat_prox_mat = const.get_proximities_for_random_tasks(m)
 
-    env = RealConstellationEnv(num_planes, num_sats_per_plane, m, N, M, L, episode_step_limit, lambda_, sat_prox_mat=sat_prox_mat, graphs=const.graphs)
+    env = RealConstellationEnv(num_planes, num_sats_per_plane, m, N, M, L, T, lambda_, sat_prox_mat=sat_prox_mat, graphs=const.graphs)
     env.reset()
+
+    # #EVALUATE VDN
+    # print('Evaluating IQL SAP')
+    # iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_real_const_trained_on_nha'
+    # params = [
+    #     'src/main.py',
+    #     '--config=iql_sap_custom_cnn',
+    #     '--env-config=real_constellation_env',
+    #     'with',
+    #     f'checkpoint_path={iql_sap_model_path}',
+    #     'test_nepisode=1',
+    #     'evaluate=True',
+    #     'use_offline_dataset=False'
+    #     ]
+    # explicit_dict_items = {
+    #     'env_args': {'sat_prox_mat': sat_prox_mat,
+    #                  'T': T,
+    #                  }
+    # }
+    
+    # iql_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
+    # iql_sap_val = float(iql_sap_exp.result[1])
+    # iql_sap_actions = iql_sap_exp.result[0]
+    # iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
+    # print('Old IQL SAP:', iql_sap_val)
+
+    # env.reset()
 
     #EVALUATE VDN
     print('Evaluating IQL SAP')
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed264785290_2024-05-06 22:09:52.054875'
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed938465122_2024-05-07 16:30:23.198948'
     params = [
         'src/main.py',
         '--config=iql_sap_custom_cnn',
@@ -243,11 +272,12 @@ def real_constellation_test():
         f'checkpoint_path={iql_sap_model_path}',
         'test_nepisode=1',
         'evaluate=True',
-        'load_step=300400'
+        'use_offline_dataset=False',
+        'load_step=-1'
         ]
     explicit_dict_items = {
         'env_args': {'sat_prox_mat': sat_prox_mat,
-                     'episode_step_limit': episode_step_limit,
+                     'T': T,
                      }
     }
     
@@ -255,9 +285,37 @@ def real_constellation_test():
     iql_sap_val = float(iql_sap_exp.result[1])
     iql_sap_actions = iql_sap_exp.result[0]
     iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
-    print('IQL SAP:', iql_sap_val)
+    print('Most Recent IQL SAP:', iql_sap_val)
 
     env.reset()
+
+    # #EVALUATE VDN
+    # print('Evaluating IQL SAP')
+    # iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed938465122_2024-05-07 16:30:23.198948'
+    # params = [
+    #     'src/main.py',
+    #     '--config=iql_sap_custom_cnn',
+    #     '--env-config=real_constellation_env',
+    #     'with',
+    #     f'checkpoint_path={iql_sap_model_path}',
+    #     'test_nepisode=1',
+    #     'evaluate=True',
+    #     'load_step=-1'
+    #     'use_offline_dataset=False'
+    #     ]
+    # explicit_dict_items = {
+    #     'env_args': {'sat_prox_mat': sat_prox_mat,
+    #                  'T': T,
+    #                  }
+    # }
+    
+    # iql_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
+    # iql_sap_val = float(iql_sap_exp.result[1])
+    # iql_sap_actions = iql_sap_exp.result[0]
+    # iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
+    # print('Only pretrained IQL SAP:', iql_sap_val)
+
+    # env.reset()
 
     haal3_assigns, haal3_val = solve_w_haal(env, L)
     print(f'HAAL, L={L}:', haal3_val)

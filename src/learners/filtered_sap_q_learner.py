@@ -44,13 +44,13 @@ class FilteredSAPQLearner:
         else:
             device = "cpu"
             
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         
         if self.args.standardise_returns:
-            self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
+            self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
 
-        reward_shape = self.n_agents if getattr(self.args, "cooperative_rewards", False) else 1
+        reward_shape = self.n if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_rewards:
             self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
 
@@ -83,7 +83,7 @@ class FilteredSAPQLearner:
         top_M_q_values = mac_out[:, :, :, :-1]
 
         #Create a matrix where the default value is the baseline action benefit
-        q_values_out = baseline_action_benefit.unsqueeze(-1).expand(-1, -1, -1, self.args.n_actions).clone()
+        q_values_out = baseline_action_benefit.unsqueeze(-1).expand(-1, -1, -1, self.args.m).clone()
 
         #find M max indices in total_agent_benefits_by_task
         indices = th.tensor(np.indices(top_agent_tasks.shape))
@@ -107,7 +107,7 @@ class FilteredSAPQLearner:
         target_top_M_q_values = target_mac_out[:, :, :, :-1]
 
         #Create a matrix where the default value is the baseline action benefit
-        target_q_values_out = target_baseline_action_benefit.unsqueeze(-1).expand(-1, -1, -1, self.args.n_actions).clone()
+        target_q_values_out = target_baseline_action_benefit.unsqueeze(-1).expand(-1, -1, -1, self.args.m).clone()
 
         #find M max indices in total_agent_benefits_by_task
         indices = th.tensor(np.indices(top_agent_tasks[:, 1:].shape))
@@ -122,13 +122,13 @@ class FilteredSAPQLearner:
             q_values_out_detach = q_values_out.clone().detach().cpu()
             q_values_out_detach[avail_actions == 0] = -9999999
             
-            target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)
+            target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(1,batch.max_seq_length): #want targets to be from t+1, so iterate from 1 to max_seq_length-1
                     row_ind, col_ind = scipy.optimize.linear_sum_assignment(q_values_out_detach[bn, t, :, :], maximize=True)
                     target_max_qvals[bn, t-1, :] = target_q_values_out[bn, t-1, row_ind, col_ind]
         else:
-            target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n_agents), device=mac_out.device)
+            target_max_qvals = th.zeros((batch.batch_size, batch.max_seq_length-1, self.n), device=mac_out.device)
             for bn in range(batch.batch_size):
                 for t in range(batch.max_seq_length-1):
                     row_ind, col_ind = scipy.optimize.linear_sum_assignment(target_q_values_out[bn, t, :, :].detach().cpu(), maximize=True)
@@ -181,8 +181,8 @@ class FilteredSAPQLearner:
             self.logger.log_stat("grad_norm", grad_norm.item(), t_env)
             mask_elems = mask.sum().item()
             self.logger.log_stat("td_error_abs", (masked_td_error.abs().sum().item()/mask_elems), t_env)
-            self.logger.log_stat("q_taken_mean", (chosen_action_qvals * mask).sum().item()/(mask_elems * self.args.n_agents), t_env)
-            self.logger.log_stat("target_mean", (targets * mask).sum().item()/(mask_elems * self.args.n_agents), t_env)
+            self.logger.log_stat("q_taken_mean", (chosen_action_qvals * mask).sum().item()/(mask_elems * self.args.n), t_env)
+            self.logger.log_stat("target_mean", (targets * mask).sum().item()/(mask_elems * self.args.n), t_env)
             self.log_stats_t = t_env
 
     def _update_targets_hard(self):

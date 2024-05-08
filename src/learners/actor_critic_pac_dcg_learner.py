@@ -12,8 +12,8 @@ from components.standarize_stream import RunningMeanStd
 class PACDCGLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.logger = logger
 
         self.mac = mac
@@ -43,7 +43,7 @@ class PACDCGLearner:
             device = "cpu"
         
         self.ret_ms = RunningMeanStd(shape=(1, ), device=device)
-        self.ret_ms_v = RunningMeanStd(shape=(self.n_agents, ), device=device)
+        self.ret_ms_v = RunningMeanStd(shape=(self.n, ), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
@@ -54,7 +54,7 @@ class PACDCGLearner:
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
 
-        mask = mask.repeat(1, 1, self.n_agents)
+        mask = mask.repeat(1, 1, self.n)
 
         critic_mask = mask.clone()
 
@@ -135,7 +135,7 @@ class PACDCGLearner:
                 greedy_actions.append(self.target_critic.forward(batch, t=t, policy_mode=False))
             greedy_actions = th.stack(greedy_actions, dim=1)                   
             target_out = []
-            for i in range(self.n_agents):
+            for i in range(self.n):
                 current_actions = copy.deepcopy(greedy_actions)
                 current_actions[:, :, i] = actions[:, :, i]
                 self.target_critic.init_hidden(batch.batch_size)
@@ -171,7 +171,7 @@ class PACDCGLearner:
             greedy_actions.append(self.critic.forward(batch, t=t, policy_mode=False))
         greedy_actions = th.stack(greedy_actions, dim=1)
         max_q_a = []
-        for i in range(self.n_agents):
+        for i in range(self.n):
             current_actions = copy.deepcopy(greedy_actions)
             current_actions[:, :, i] = actions[:, :, i]
             self.critic.init_hidden(batch.batch_size)

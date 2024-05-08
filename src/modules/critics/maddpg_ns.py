@@ -9,18 +9,18 @@ class MADDPGCriticNS(nn.Module):
     def __init__(self, scheme, args):
         super(MADDPGCriticNS, self).__init__()
         self.args = args
-        self.n_actions = args.n_actions
-        self.n_agents = args.n_agents
-        self.input_shape = self._get_input_shape(scheme) + self.n_actions * self.n_agents
+        self.m = args.m
+        self.n = args.n
+        self.input_shape = self._get_input_shape(scheme) + self.m * self.n
         if self.args.obs_last_action:
-            self.input_shape += self.n_actions
+            self.input_shape += self.m
         self.output_type = "q"
-        self.critics = [MLP(self.input_shape, self.args.hidden_dim, 1) for _ in range(self.n_agents)]
+        self.critics = [MLP(self.input_shape, self.args.hidden_dim, 1) for _ in range(self.n)]
 
     def forward(self, inputs, actions):
         inputs = th.cat((inputs, actions), dim=-1)
         qs = []
-        for i in range(self.n_agents):
+        for i in range(self.n):
             q = self.critics[i](inputs[:, :, i]).unsqueeze(2)
             qs.append(q)
         return th.cat(qs, dim=2)
@@ -35,7 +35,7 @@ class MADDPGCriticNS(nn.Module):
 
     def parameters(self):
         params = list(self.critics[0].parameters())
-        for i in range(1, self.n_agents):
+        for i in range(1, self.n):
             params += list(self.critics[i].parameters())
         return params
 

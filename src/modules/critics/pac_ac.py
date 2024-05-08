@@ -6,13 +6,13 @@ from einops import rearrange, reduce, repeat
 from modules.critics.mlp import MLP
 
 
-def generate_other_actions(n_actions, n_agents, device):
+def generate_other_actions(m, n, device):
 
 
     # print(avail_actions.shape)
     # ^ batch n_steps agents actions
     other_acts = [
-        th.cat(x) for x in product(*[th.eye(n_actions, device=device) for _ in range(n_agents - 1)])
+        th.cat(x) for x in product(*[th.eye(m, device=device) for _ in range(n - 1)])
     ]
     other_acts = th.stack(other_acts)
 
@@ -24,8 +24,8 @@ class PACCritic(nn.Module):
         super(PACCritic, self).__init__()
 
         self.args = args
-        self.n_actions = args.n_actions
-        self.n_agents = args.n_agents
+        self.m = args.m
+        self.n = args.n
 
         input_shape = self._get_input_shape(scheme)
         self.output_type = "q"
@@ -34,7 +34,7 @@ class PACCritic(nn.Module):
         # Set up network layers
         self.fc1 = nn.Linear(input_shape, args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
-        self.fc3 = nn.Linear(args.hidden_dim, self.n_actions)
+        self.fc3 = nn.Linear(args.hidden_dim, self.m)
 
         self.device = "cuda" if args.use_cuda else "cpu"
 
@@ -51,9 +51,9 @@ class PACCritic(nn.Module):
 
     def _gen_all_other_actions(self, batch, bs, max_t):
 
-        other_agents_actions = generate_other_actions(self.n_actions, self.n_agents, self.device)
+        other_agents_actions = generate_other_actions(self.m, self.n, self.device)
         n_other_actions = other_agents_actions.shape[0]
-        other_agents_actions = repeat(other_agents_actions, "e f -> n s a e f", n=bs, s=max_t, a=self.n_agents)
+        other_agents_actions = repeat(other_agents_actions, "e f -> n s a e f", n=bs, s=max_t, a=self.n)
         return other_agents_actions
 
     def _gen_subsample_other_actions(self, batch, bs, max_t, sample_size):
@@ -67,8 +67,8 @@ class PACCritic(nn.Module):
         avail_dist = th.distributions.OneHotCategorical(probs=probs)
         sample = avail_dist.sample([sample_size])
         samples = []
-        for i in range(self.n_agents):
-            samples.append(th.cat([sample[:, :, :, j, :] for j in range(self.n_agents) if j != i], dim=-1))
+        for i in range(self.n):
+            samples.append(th.cat([sample[:, :, :, j, :] for j in range(self.n) if j != i], dim=-1))
         samples = th.stack(samples)
         samples = rearrange(samples, "i j k l m -> k l i j m")
         return samples
@@ -80,11 +80,11 @@ class PACCritic(nn.Module):
         ts = slice(None) if t is None else slice(t, t+1)
         inputs = []
         # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n, 1))
 
         # observations
         if self.args.obs_individual_obs:
-            inputs.append(batch["obs"][:, ts].view(bs, max_t, -1).unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+            inputs.append(batch["obs"][:, ts].view(bs, max_t, -1).unsqueeze(2).repeat(1, 1, self.n, 1))
 
         # last actions
         if self.args.obs_last_action:
@@ -94,7 +94,7 @@ class PACCritic(nn.Module):
                 inputs.append(batch["actions_onehot"][:, slice(t-1, t)].view(bs, max_t, 1, -1))
             else:
                 last_actions = th.cat([th.zeros_like(batch["actions_onehot"][:, 0:1]), batch["actions_onehot"][:, :-1]], dim=1)
-                last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n_agents, 1)
+                last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n, 1)
                 inputs.append(last_actions)
 
         inputs = th.cat(inputs, dim=-1)
@@ -120,11 +120,11 @@ class PACCritic(nn.Module):
         ts = slice(None) if t is None else slice(t, t+1)
         inputs = []
         # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n, 1))
 
         # observations
         if self.args.obs_individual_obs:
-            inputs.append(batch["obs"][:, ts].view(bs, max_t, -1).unsqueeze(2).repeat(1, 1, self.n_agents, 1))
+            inputs.append(batch["obs"][:, ts].view(bs, max_t, -1).unsqueeze(2).repeat(1, 1, self.n, 1))
 
         # last actions
         if self.args.obs_last_action:
@@ -134,12 +134,12 @@ class PACCritic(nn.Module):
                 inputs.append(batch["actions_onehot"][:, slice(t-1, t)].view(bs, max_t, 1, -1))
             else:
                 last_actions = th.cat([th.zeros_like(batch["actions_onehot"][:, 0:1]), batch["actions_onehot"][:, :-1]], dim=1)
-                last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n_agents, 1)
+                last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n, 1)
                 inputs.append(last_actions)
 
         actions = []
-        for i in range(self.n_agents):
-            actions.append(th.cat([batch["actions_onehot"][:, :, j].unsqueeze(2) for j in range(self.n_agents)
+        for i in range(self.n):
+            actions.append(th.cat([batch["actions_onehot"][:, :, j].unsqueeze(2) for j in range(self.n)
                                    if j != i], dim=-1))
         actions = th.cat(actions, dim=2)
         inputs.append(actions)
@@ -152,10 +152,10 @@ class PACCritic(nn.Module):
         input_shape = scheme["state"]["vshape"]
         # observations
         if self.args.obs_individual_obs:
-            input_shape += scheme["obs"]["vshape"] * self.n_agents
+            input_shape += scheme["obs"]["vshape"] * self.n
         # last actions
         if self.args.obs_last_action:
-            input_shape += scheme["actions_onehot"]["vshape"][0] * self.n_agents
-        input_shape += self.n_actions * (self.n_agents - 1)
+            input_shape += scheme["actions_onehot"]["vshape"][0] * self.n
+        input_shape += self.m * (self.n - 1)
         return input_shape
 

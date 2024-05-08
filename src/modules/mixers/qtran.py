@@ -10,8 +10,8 @@ class QTranBase(nn.Module):
 
         self.args = args
 
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.state_dim = int(np.prod(args.state_shape))
         self.arch = self.args.qtran_arch # QTran architecture
 
@@ -20,10 +20,10 @@ class QTranBase(nn.Module):
         # Q(s,u)
         if self.arch == "coma_critic":
             # Q takes [state, u] as input
-            q_input_size = self.state_dim + (self.n_agents * self.n_actions)
+            q_input_size = self.state_dim + (self.n * self.m)
         elif self.arch == "qtran_paper":
             # Q takes [state, agent_action_observation_encodings]
-            q_input_size = self.state_dim + self.args.rnn_hidden_dim + self.n_actions
+            q_input_size = self.state_dim + self.args.rnn_hidden_dim + self.m
         else:
             raise Exception("{} is not a valid QTran architecture".format(self.arch))
 
@@ -40,7 +40,7 @@ class QTranBase(nn.Module):
                                    nn.Linear(self.embed_dim, self.embed_dim),
                                    nn.ReLU(),
                                    nn.Linear(self.embed_dim, 1))
-            ae_input = self.args.rnn_hidden_dim + self.n_actions
+            ae_input = self.args.rnn_hidden_dim + self.m
             self.action_encoding = nn.Sequential(nn.Linear(ae_input, ae_input),
                                                  nn.ReLU(),
                                                  nn.Linear(ae_input, ae_input))
@@ -60,7 +60,7 @@ class QTranBase(nn.Module):
                                    nn.Linear(self.embed_dim, self.embed_dim),
                                    nn.ReLU(),
                                    nn.Linear(self.embed_dim, 1))
-            ae_input = self.args.rnn_hidden_dim + self.n_actions
+            ae_input = self.args.rnn_hidden_dim + self.m
             self.action_encoding = nn.Sequential(nn.Linear(ae_input, ae_input),
                                                  nn.ReLU(),
                                                  nn.Linear(ae_input, ae_input))
@@ -76,22 +76,22 @@ class QTranBase(nn.Module):
         if self.arch == "coma_critic":
             if actions is None:
                 # Use the actions taken by the agents
-                actions = batch["actions_onehot"].reshape(bs * ts, self.n_agents * self.n_actions)
+                actions = batch["actions_onehot"].reshape(bs * ts, self.n * self.m)
             else:
                 # It will arrive as (bs, ts, agents, actions), we need to reshape it
-                actions = actions.reshape(bs * ts, self.n_agents * self.n_actions)
+                actions = actions.reshape(bs * ts, self.n * self.m)
             inputs = th.cat([states, actions], dim=1)
         elif self.arch == "qtran_paper":
             if actions is None:
                 # Use the actions taken by the agents
-                actions = batch["actions_onehot"].reshape(bs * ts, self.n_agents, self.n_actions)
+                actions = batch["actions_onehot"].reshape(bs * ts, self.n, self.m)
             else:
                 # It will arrive as (bs, ts, agents, actions), we need to reshape it
-                actions = actions.reshape(bs * ts, self.n_agents, self.n_actions)
+                actions = actions.reshape(bs * ts, self.n, self.m)
 
-            hidden_states = hidden_states.reshape(bs * ts, self.n_agents, -1)
+            hidden_states = hidden_states.reshape(bs * ts, self.n, -1)
             agent_state_action_input = th.cat([hidden_states, actions], dim=2)
-            agent_state_action_encoding = self.action_encoding(agent_state_action_input.reshape(bs * ts * self.n_agents, -1)).reshape(bs * ts, self.n_agents, -1)
+            agent_state_action_encoding = self.action_encoding(agent_state_action_input.reshape(bs * ts * self.n, -1)).reshape(bs * ts, self.n, -1)
             agent_state_action_encoding = agent_state_action_encoding.sum(dim=1) # Sum across agents
 
             inputs = th.cat([states, agent_state_action_encoding], dim=1)

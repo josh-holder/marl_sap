@@ -13,7 +13,7 @@ class PretrainedAdversary(gym.Wrapper):
         self.pt_observation_space = self.observation_space[0]
         self.action_space = Tuple(self.action_space[1:])
         self.observation_space = Tuple(self.observation_space[1:])
-        self.n_agents = 2
+        self.n = 2
 
         self.adv = DDPG(8, 5, 50, 64, 0.01)
         param_path = os.path.join(os.path.dirname(__file__), 'adv_params.pt')

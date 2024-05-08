@@ -13,8 +13,8 @@ from components.standarize_stream import RunningMeanStd
 class ActorCriticLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.logger = logger
 
         self.mac = mac
@@ -39,7 +39,7 @@ class ActorCriticLearner:
             device = "cpu"
 
         if self.args.standardise_returns:
-            self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
+            self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
         if self.args.standardise_rewards:
             self.rew_ms = RunningMeanStd(shape=(1,), device=device)
 
@@ -62,7 +62,7 @@ class ActorCriticLearner:
             self.logger.console_logger.error("Actor Critic Learner: mask.sum() == 0 at t_env {}".format(t_env))
             return
 
-        mask = mask.repeat(1, 1, self.n_agents)
+        mask = mask.repeat(1, 1, self.n)
 
         critic_mask = mask.clone()
 

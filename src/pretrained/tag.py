@@ -13,7 +13,7 @@ class FrozenTag(gym.Wrapper):
         self.pt_observation_space = self.observation_space[-1]
         self.action_space = Tuple(self.action_space[:-1])
         self.observation_space = Tuple(self.observation_space[:-1])
-        self.n_agents = 3
+        self.n = 3
 
     def reset(self, *args, **kwargs):
         obs = super().reset(*args, **kwargs)
@@ -38,7 +38,7 @@ class RandomTag(gym.Wrapper):
         self.pt_observation_space = self.observation_space[-1]
         self.action_space = Tuple(self.action_space[:-1])
         self.observation_space = Tuple(self.observation_space[:-1])
-        self.n_agents = 3
+        self.n = 3
 
     def reset(self, *args, **kwargs):
         obs = super().reset(*args, **kwargs)
@@ -63,7 +63,7 @@ class PretrainedTag(gym.Wrapper):
         self.pt_observation_space = self.observation_space[-1]
         self.action_space = Tuple(self.action_space[:-1])
         self.observation_space = Tuple(self.observation_space[:-1])
-        self.n_agents = 3
+        self.n = 3
 
         self.prey = DDPG(14, 5, 50, 128, 0.01)
         param_path = os.path.join(os.path.dirname(__file__), 'prey_params.pt')

@@ -4,7 +4,7 @@ env_args:
   num_planes: 10
   num_sats_per_plane: 10
   m: 150
-  episode_step_limit: 100
+  T: 100
   L: 3
   lambda_: 0.5
   bids_as_actions: null

@@ -6,6 +6,8 @@ from copy import deepcopy
 
 from collections import defaultdict
 
+import sys
+sys.path.append('/Users/joshholder/code/satellite-constellation')
 from constellation_sim.Satellite import Satellite
 from constellation_sim.Task import Task
 

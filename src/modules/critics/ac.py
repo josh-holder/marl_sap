@@ -8,8 +8,8 @@ class ACCritic(nn.Module):
         super(ACCritic, self).__init__()
 
         self.args = args
-        self.n_actions = args.n_actions
-        self.n_agents = args.n_agents
+        self.m = args.m
+        self.n = args.n
 
         input_shape = self._get_input_shape(scheme)
         self.output_type = "v"
@@ -20,7 +20,7 @@ class ACCritic(nn.Module):
         if not self.args.env_args.get("bids_as_actions", False):
             self.fc3 = nn.Linear(args.hidden_dim, 1)
         else:
-            self.fc3 = nn.Linear(args.hidden_dim, args.n_actions)
+            self.fc3 = nn.Linear(args.hidden_dim, args.m)
 
     def forward(self, batch, t=None):
         inputs, bs, max_t = self._build_inputs(batch, t=t)
@@ -37,7 +37,7 @@ class ACCritic(nn.Module):
         # observations
         inputs.append(batch["obs"][:, ts])
 
-        inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
+        inputs.append(th.eye(self.n, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
 
         inputs = th.cat(inputs, dim=-1)
         return inputs, bs, max_t
@@ -46,5 +46,5 @@ class ACCritic(nn.Module):
         # observations
         input_shape = scheme["obs"]["vshape"]
         # agent id
-        input_shape += self.n_agents
+        input_shape += self.n
         return input_shape

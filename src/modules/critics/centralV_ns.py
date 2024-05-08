@@ -11,19 +11,19 @@ class CentralVCriticNS(nn.Module):
         super(CentralVCriticNS, self).__init__()
 
         self.args = args
-        self.n_actions = args.n_actions
-        self.n_agents = args.n_agents
+        self.m = args.m
+        self.n = args.n
 
         input_shape = self._get_input_shape(scheme)
         self.output_type = "v"
 
         # Set up network layers
-        self.critics = [MLP(input_shape, args.hidden_dim, 1) for _ in range(self.n_agents)]
+        self.critics = [MLP(input_shape, args.hidden_dim, 1) for _ in range(self.n)]
 
     def forward(self, batch, t=None):
         inputs, bs, max_t = self._build_inputs(batch, t=t)
         qs = []
-        for i in range(self.n_agents):
+        for i in range(self.n):
             q = self.critics[i](inputs)
             qs.append(q.view(bs, max_t, 1, -1))
         q = th.cat(qs, dim=2)
@@ -63,13 +63,13 @@ class CentralVCriticNS(nn.Module):
             input_shape += scheme["obs"]["vshape"]
         # last actions
         if self.args.obs_last_action:
-            input_shape += scheme["actions_onehot"]["vshape"][0] * self.n_agents
+            input_shape += scheme["actions_onehot"]["vshape"][0] * self.n
 
         return input_shape
 
     def parameters(self):
         params = list(self.critics[0].parameters())
-        for i in range(1, self.n_agents):
+        for i in range(1, self.n):
             params += list(self.critics[i].parameters())
         return params
 

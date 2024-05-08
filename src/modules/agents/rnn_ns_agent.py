@@ -6,9 +6,9 @@ class RNNNSAgent(nn.Module):
     def __init__(self, input_shape, args):
         super(RNNNSAgent, self).__init__()
         self.args = args
-        self.n_agents = args.n_agents
+        self.n = args.n
         self.input_shape = input_shape
-        self.agents = th.nn.ModuleList([RNNAgent(input_shape, args) for _ in range(self.n_agents)])
+        self.agents = th.nn.ModuleList([RNNAgent(input_shape, args) for _ in range(self.n)])
 
     def init_hidden(self):
         # make hidden states on same device as model
@@ -17,15 +17,15 @@ class RNNNSAgent(nn.Module):
     def forward(self, inputs, hidden_state):
         hiddens = []
         qs = []
-        if inputs.size(0) == self.n_agents:
-            for i in range(self.n_agents):
+        if inputs.size(0) == self.n:
+            for i in range(self.n):
                 q, h = self.agents[i](inputs[i].unsqueeze(0), hidden_state[:, i])
                 hiddens.append(h)
                 qs.append(q)
             return th.cat(qs), th.cat(hiddens).unsqueeze(0)
         else:
-            for i in range(self.n_agents):
-                inputs = inputs.view(-1, self.n_agents, self.input_shape)
+            for i in range(self.n):
+                inputs = inputs.view(-1, self.n, self.input_shape)
                 q, h = self.agents[i](inputs[:, i], hidden_state[:, i])
                 hiddens.append(h.unsqueeze(1))
                 qs.append(q.unsqueeze(1))

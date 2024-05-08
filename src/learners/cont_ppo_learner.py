@@ -13,8 +13,8 @@ from components.standarize_stream import RunningMeanStd
 class ContinuousPPOLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.logger = logger
 
         self.mac = mac
@@ -40,9 +40,9 @@ class ContinuousPPOLearner:
             device = "cpu"
             
         if self.args.standardise_returns:
-            self.ret_ms = RunningMeanStd(shape=(self.n_agents, ), device=device)
+            self.ret_ms = RunningMeanStd(shape=(self.n, ), device=device)
 
-        reward_shape = self.n_agents if getattr(self.args, "cooperative_rewards", False) else 1
+        reward_shape = self.n if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_rewards:
             self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
 
@@ -59,8 +59,8 @@ class ContinuousPPOLearner:
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
 
         #Expand mask and rewards to match actions
-        mask = mask.unsqueeze(-1).repeat(1, 1, self.n_agents, self.n_actions)
-        rewards = rewards.unsqueeze(-1).repeat(1, 1, 1, self.n_actions) #problematic line: should it be 1, 1, self.n_agents, self.n_actions if there is cooperative reward?
+        mask = mask.unsqueeze(-1).repeat(1, 1, self.n, self.m)
+        rewards = rewards.unsqueeze(-1).repeat(1, 1, 1, self.m) #problematic line: should it be 1, 1, self.n, self.m if there is cooperative reward?
 
         critic_mask = mask.clone()
 

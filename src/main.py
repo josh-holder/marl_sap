@@ -123,7 +123,7 @@ def experiment_run(params, explicit_dict_items=None, verbose=True):
             entry_point="envs.simplest_env:SimplestEnv",
             kwargs={
                     "benefits_by_state": benefits_by_state,
-                    "episode_step_limit": config_dict['env_args']['episode_step_limit'],
+                    "T": config_dict['env_args']['T'],
                 },
         )
 

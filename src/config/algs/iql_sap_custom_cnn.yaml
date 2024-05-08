@@ -2,9 +2,9 @@
 
 # use epsilon greedy action selector
 action_selector: "filtered_const_sap"
-epsilon_start: 0.04
+epsilon_start: 0.15
 epsilon_finish: 0.005
-epsilon_anneal_time: 150000
+epsilon_anneal_time: 600000
 evaluation_epsilon: 0
 
 # Pretraining configs
@@ -13,7 +13,7 @@ offline_dataset_path: null
 pretrain_fn: null
 pretrain_batches: 1000
 
-t_max: 500000
+t_max: 800000
 
 runner: "episode"
 

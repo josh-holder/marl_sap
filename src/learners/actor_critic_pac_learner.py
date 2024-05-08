@@ -13,8 +13,8 @@ from components.standarize_stream import RunningMeanStd
 class PACActorCriticLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.logger = logger
 
         self.mac = mac
@@ -39,7 +39,7 @@ class PACActorCriticLearner:
         else:
             device = "cpu"
             
-        self.ret_ms = RunningMeanStd(shape=(self.n_agents, ), device=device)
+        self.ret_ms = RunningMeanStd(shape=(self.n, ), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
@@ -50,7 +50,7 @@ class PACActorCriticLearner:
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
 
-        mask = mask.repeat(1, 1, self.n_agents)
+        mask = mask.repeat(1, 1, self.n)
 
         critic_mask = mask.clone()
 

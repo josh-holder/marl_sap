@@ -8,11 +8,11 @@ class MADDPGCritic(nn.Module):
     def __init__(self, scheme, args):
         super(MADDPGCritic, self).__init__()
         self.args = args
-        self.n_actions = args.n_actions
-        self.n_agents = args.n_agents
-        self.input_shape = self._get_input_shape(scheme) + self.n_actions * self.n_agents
+        self.m = args.m
+        self.n = args.n
+        self.input_shape = self._get_input_shape(scheme) + self.m * self.n
         if self.args.obs_last_action:
-            self.input_shape += self.n_actions
+            self.input_shape += self.m
         self.output_type = "q"
 
         # Set up network layers
@@ -30,11 +30,11 @@ class MADDPGCritic(nn.Module):
     def _get_input_shape(self, scheme):
         # state
         input_shape = scheme["state"]["vshape"]
-        # print(scheme["state"]["vshape"], scheme["obs"]["vshape"], self.n_agents, scheme["actions_one"])
+        # print(scheme["state"]["vshape"], scheme["obs"]["vshape"], self.n, scheme["actions_one"])
         # whether to add the individual observation
         if self.args.obs_individual_obs:
             input_shape += scheme["obs"]["vshape"]
         # agent id
         if self.args.obs_agent_id:
-            input_shape += self.n_agents
+            input_shape += self.n
         return input_shape

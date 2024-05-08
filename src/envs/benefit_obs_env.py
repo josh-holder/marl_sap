@@ -11,20 +11,20 @@ import scipy.optimize
 class BenefitObsEnv(Env):
     def __init__(self,
                  benefits_by_state,
-                 episode_step_limit,
+                 T,
                  bids_as_actions=False,
                  seed=None,
                  key=None):
         self.logger = logging.getLogger(__name__)
         self.seed(seed)
 
-        self.n_agents = benefits_by_state[0].shape[0]
-        self.num_tasks = benefits_by_state[0].shape[1]
+        self.n = benefits_by_state[0].shape[0]
+        self.m = benefits_by_state[0].shape[1]
         self.num_states = len(benefits_by_state)
 
         self.benefits_by_state = benefits_by_state
 
-        self.episode_step_limit = episode_step_limit
+        self.T = T
 
         self.curr_state = 0
         self.curr_state_onehot = np.zeros(self.num_states)
@@ -35,14 +35,14 @@ class BenefitObsEnv(Env):
         self.bids_as_actions = bids_as_actions
         if self.bids_as_actions:
             #Action space is a bid for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.num_tasks,))] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.m,))] * self.n))
         else:
             #Action space is one action for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.num_tasks)] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.m)] * self.n))
 
         #Observation space is just what state the game is in + the benefits for the agent
-        self.obs_space_size = self.num_states + self.num_tasks 
-        self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n_agents))
+        self.obs_space_size = self.num_states + self.m 
+        self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n))
 
     def step(self, actions):
         """ 
@@ -54,12 +54,12 @@ class BenefitObsEnv(Env):
         else:
             assignments = [int(a) for a in actions]
 
-        num_times_tasks_completed = np.zeros(self.num_tasks)
-        for i in range(self.n_agents):
+        num_times_tasks_completed = np.zeros(self.m)
+        for i in range(self.n):
             num_times_tasks_completed[assignments[i]] += 1
 
         rewards = []
-        for i in range(self.n_agents):
+        for i in range(self.n):
             chosen_task = assignments[i]
             rewards.append(self.benefits_by_state[self.curr_state][i, chosen_task] / num_times_tasks_completed[chosen_task])
 
@@ -70,9 +70,9 @@ class BenefitObsEnv(Env):
 
         self.curr_step += 1        
 
-        self._obs = [np.concatenate([self.curr_state_onehot, self.benefits_by_state[self.curr_state][i,:]]) for i in range(self.n_agents)]
+        self._obs = [np.concatenate([self.curr_state_onehot, self.benefits_by_state[self.curr_state][i,:]]) for i in range(self.n)]
 
-        done = self.curr_step >= self.episode_step_limit
+        done = self.curr_step >= self.T
 
         return rewards, done, {}
 
@@ -84,7 +84,7 @@ class BenefitObsEnv(Env):
 
         self.curr_step = 0
 
-        self._obs = [np.concatenate([self.curr_state_onehot, self.benefits_by_state[self.curr_state][i,:]]) for i in range(self.n_agents)]
+        self._obs = [np.concatenate([self.curr_state_onehot, self.benefits_by_state[self.curr_state][i,:]]) for i in range(self.n)]
 
         return self.get_obs(), self.get_state()
 
@@ -114,11 +114,11 @@ class BenefitObsEnv(Env):
 
     def get_state_size(self):
         """ Returns the shape of the state"""
-        return self.n_agents * self.get_obs_size()
+        return self.n * self.get_obs_size()
 
     def get_avail_actions(self):
         """ All actions are available."""
-        return [self.get_avail_agent_actions(agent_id) for agent_id in range(self.n_agents)]
+        return [self.get_avail_agent_actions(agent_id) for agent_id in range(self.n)]
 
     def get_avail_agent_actions(self, agent_id):
         """ Returns the available actions for agent_id (all actions are always available)"""
@@ -126,7 +126,7 @@ class BenefitObsEnv(Env):
 
     def get_total_actions(self):
         """ Returns the total number of actions an agent could ever take """
-        return self.num_tasks
+        return self.m
     
     def get_stats(self):
         return {}
@@ -134,7 +134,7 @@ class BenefitObsEnv(Env):
     def get_env_info(self):
         env_info = {"state_shape": self.get_state_size(),
                     "obs_shape": self.get_obs_size(),
-                    "n_actions": self.get_total_actions(),
-                    "n_agents": self.n_agents,
-                    "episode_step_limit": self.episode_step_limit}
+                    "m": self.get_total_actions(),
+                    "n": self.n,
+                    "T": self.T}
         return env_info

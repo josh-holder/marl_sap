@@ -107,8 +107,8 @@ def run_sequential(args, logger):
 
     # Set up schemes and groups here
     env_info = runner.get_env_info()
-    args.n_agents = env_info["n_agents"]
-    args.n_actions = env_info["n_actions"]
+    args.n = env_info["n"]
+    args.m = env_info["m"]
     args.state_shape = env_info["state_shape"]
 
     # Default/Base scheme
@@ -117,7 +117,7 @@ def run_sequential(args, logger):
     #     "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
     #     "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
     #     "avail_actions": {
-    #         "vshape": (env_info["n_actions"],),
+    #         "vshape": (env_info["m"],),
     #         "group": "agents",
     #         "dtype": th.int,
     #     },
@@ -129,25 +129,25 @@ def run_sequential(args, logger):
         "obs": {"vshape": env_info["obs_shape"], "group": "agents", "dtype": th.float16},
         "actions": {"vshape": (1,), "group": "agents", "dtype": th.int16},
         "avail_actions": {
-            "vshape": (env_info["n_actions"],),
+            "vshape": (env_info["m"],),
             "group": "agents",
             "dtype": th.bool,
         },
         "rewards": {"vshape": (1,), "dtype": th.float16},
         "terminated": {"vshape": (1,), "dtype": th.bool},
     }
-    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["n_actions"])])}
+    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["m"])])}
 
     #Adjust scheme based on configs
     if getattr(args, "bids_as_actions", False):
-        #Bids are the actions, so n_actions-dimensional, and no longer need to be one-hot encoded
-        scheme["actions"] = {"vshape": (env_info["n_actions"],), "group": "agents", "dtype": th.float32}
+        #Bids are the actions, so m-dimensional, and no longer need to be one-hot encoded
+        scheme["actions"] = {"vshape": (env_info["m"],), "group": "agents", "dtype": th.float32}
         preprocess = {}
     if not getattr(args, "cooperative_rewards", False):
-        #Rewards are per-agent, so n_agents-dimensional
-        scheme["rewards"] = {"vshape": (env_info["n_agents"],), "dtype": th.float16}
+        #Rewards are per-agent, so n-dimensional
+        scheme["rewards"] = {"vshape": (env_info["n"],), "dtype": th.float16}
 
-    groups = {"agents": args.n_agents}
+    groups = {"agents": args.n}
 
     #LOAD OR GENERATE AN OFFLINE DATASET
     use_offline_dataset = getattr(args, "use_offline_dataset", False)
@@ -157,7 +157,7 @@ def run_sequential(args, logger):
             scheme,
             groups,
             args.buffer_size,
-            env_info["episode_step_limit"] + 1, #max_seq_length
+            env_info["T"] + 1, #max_seq_length
             preprocess=preprocess,
             device="cpu" if args.buffer_cpu_only else args.device,
         )
@@ -168,7 +168,7 @@ def run_sequential(args, logger):
                 scheme,
                 groups,
                 args.buffer_size,
-                env_info["episode_step_limit"] + 1, #max_seq_length
+                env_info["T"] + 1, #max_seq_length
                 preprocess=preprocess,
                 device="cpu", #always generate on the CPU
             )

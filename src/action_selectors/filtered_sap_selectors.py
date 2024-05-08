@@ -25,13 +25,13 @@ class FilteredSAPActionSelector():
             self.epsilon = self.args.evaluation_epsilon
 
         num_batches = state.shape[0]
-        n_agents = state.shape[1]
-        n_actions = state.shape[2]
+        n = state.shape[1]
+        m = state.shape[2]
 
         if self.args.use_mps_action_selection:
-            picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
+            picked_actions = th.zeros(num_batches, n, device=self.args.device)
         else:
-            picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+            picked_actions = th.zeros(num_batches, n, device="cpu")
         
         for batch in range(num_batches):
             # Solve the assignment problem for each batch, converting to numpy first
@@ -42,7 +42,7 @@ class FilteredSAPActionSelector():
             top_M_benefits_from_q_values = top_M_benefits_from_q_values[:, :-1]
 
             #Create a matrix where the default value is the baseline action benefit
-            benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n_agents, n_actions).clone()
+            benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n, m).clone()
             benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
             #find M max indices in total_agent_benefits_by_task
@@ -82,17 +82,17 @@ class FilteredSAPActionSelectorOld():
             self.epsilon = self.args.evaluation_epsilon
 
         num_batches = state.shape[0]
-        n_agents = state.shape[1]
-        n_actions = state.shape[2]
+        n = state.shape[1]
+        m = state.shape[2]
 
         if self.args.use_mps_action_selection:
-            picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
+            picked_actions = th.zeros(num_batches, n, device=self.args.device)
         else:
-            picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+            picked_actions = th.zeros(num_batches, n, device="cpu")
         
         for batch in range(num_batches):
             if np.random.rand() < self.epsilon:
-                # picked_actions[batch, :] = th.randperm(n_agents)
+                # picked_actions[batch, :] = th.randperm(n)
                 _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, :, :].cpu(), maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)
             else:
@@ -104,7 +104,7 @@ class FilteredSAPActionSelectorOld():
                 top_M_benefits_from_q_values = top_M_benefits_from_q_values[:, :-1]
 
                 #Create a matrix where the default value is the baseline action benefit
-                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n_agents, n_actions).clone()
+                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n, m).clone()
                 benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
                 #find M max indices in total_agent_benefits_by_task
@@ -137,14 +137,14 @@ class FilteredEpsGrSAPTestActionSelector():
         self.epsilon = self.schedule.eval(t_env)
 
         num_batches = state.shape[0]
-        n_agents = state.shape[1]
-        n_actions = state.shape[2]
+        n = state.shape[1]
+        m = state.shape[2]
 
         if test_mode:
             if self.args.use_mps_action_selection:
-                picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
+                picked_actions = th.zeros(num_batches, n, device=self.args.device)
             else:
-                picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+                picked_actions = th.zeros(num_batches, n, device="cpu")
             for batch in range(num_batches): #need to split up by batch bc of linear_sum_assignment
                 # Solve the assignment problem for each batch, converting to numpy first
                 top_M_benefits_from_q_values = agent_inputs[batch, :, :].detach().cpu()
@@ -154,7 +154,7 @@ class FilteredEpsGrSAPTestActionSelector():
                 top_M_benefits_from_q_values = top_M_benefits_from_q_values[:, :-1]
 
                 #Create a matrix where the default value is the baseline action benefit
-                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n_agents, n_actions).clone()
+                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(1).expand(n, m).clone()
                 benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
                 #find M max indices in total_agent_benefits_by_task
@@ -170,9 +170,9 @@ class FilteredEpsGrSAPTestActionSelector():
         else:
             if np.random.rand() < self.epsilon:
                 if self.args.use_mps_action_selection:
-                    picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
+                    picked_actions = th.zeros(num_batches, n, device=self.args.device)
                 else:
-                    picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+                    picked_actions = th.zeros(num_batches, n, device="cpu")
                 for batch in range(num_batches):
                     _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, :, :].cpu(), maximize=True)
                     picked_actions[batch, :] = th.tensor(col_ind)
@@ -187,7 +187,7 @@ class FilteredEpsGrSAPTestActionSelector():
                 top_M_benefits_from_q_values = top_M_benefits_from_q_values[:, :, :-1]
 
                 #Create a matrix where the default value is the baseline action benefit
-                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(2).expand(num_batches, n_agents, n_actions).clone()
+                benefit_matrix_from_q_values = baseline_action_benefit.unsqueeze(2).expand(num_batches, n, m).clone()
                 benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
                 #find M max indices in total_agent_benefits_by_task

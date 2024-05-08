@@ -11,7 +11,7 @@ class EpisodeRunner:
         assert self.batch_size == 1
 
         self.env = env_REGISTRY[self.args.env](**self.args.env_args)
-        self.episode_step_limit = self.env.episode_step_limit
+        self.T = self.env.T
         self.t = 0
 
         self.t_env = 0
@@ -26,10 +26,10 @@ class EpisodeRunner:
 
     def setup(self, scheme, groups, preprocess, mac):
         if not self.args.use_mps_action_selection:
-            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
+            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.T + 1,
                                     preprocess=preprocess, device="cpu")
         else:
-            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
+            self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.T + 1,
                                     preprocess=preprocess, device=self.args.device)
         self.mac = mac
 
@@ -82,7 +82,7 @@ class EpisodeRunner:
             post_transition_data = {
                 "actions": actions,
                 "rewards": [(rewards,)],
-                "terminated": [(terminated != env_info.get("episode_step_limit", False),)],
+                "terminated": [(terminated != env_info.get("T", False),)],
             }
 
             #Add info to replay buffer that is available AFTER the transition

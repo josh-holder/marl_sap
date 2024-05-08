@@ -1,7 +1,7 @@
 import torch as th
 
 
-def build_td_lambda_targets(rewards, terminated, mask, target_qs, n_agents, gamma, td_lambda):
+def build_td_lambda_targets(rewards, terminated, mask, target_qs, n, gamma, td_lambda):
     # Assumes  <target_qs > in B*T*A and <reward >, <terminated >, <mask > in (at least) B*T-1*1
     # Initialise  last  lambda -return  for  not  terminated  episodes
     ret = target_qs.new_zeros(*target_qs.shape)

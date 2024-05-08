@@ -87,16 +87,16 @@ class FlattenObservation(ObservationWrapper):
 
 
 class _GymmaWrapper(MultiAgentEnv):
-    def __init__(self, key, episode_step_limit, pretrained_wrapper, seed, **kwargs):
+    def __init__(self, key, T, pretrained_wrapper, seed, **kwargs):
         self.original_env = gym.make(f"{key}", **kwargs)
-        self.episode_step_limit = episode_step_limit
-        self._env = TimeLimit(self.original_env, max_episode_steps=episode_step_limit)
+        self.T = T
+        self._env = TimeLimit(self.original_env, max_episode_steps=T)
         self._env = FlattenObservation(self._env)
 
         if pretrained_wrapper:
             self._env = getattr(pretrained, pretrained_wrapper)(self._env)
 
-        self.n_agents = self._env.n_agents
+        self.n = self._env.n
         self._obs = None
         self._info = None
 
@@ -147,11 +147,11 @@ class _GymmaWrapper(MultiAgentEnv):
         """ Returns the shape of the state"""
         if hasattr(self.original_env, 'state_size'):
             return self.original_env.state_size
-        return self.n_agents * flatdim(self.longest_observation_space)
+        return self.n * flatdim(self.longest_observation_space)
 
     def get_avail_actions(self):
         avail_actions = []
-        for agent_id in range(self.n_agents):
+        for agent_id in range(self.n):
             avail_agent = self.get_avail_agent_actions(agent_id)
             avail_actions.append(avail_agent)
         return avail_actions

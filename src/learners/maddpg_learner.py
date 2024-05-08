@@ -12,8 +12,8 @@ from components.standarize_stream import RunningMeanStd
 class MADDPGLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.logger = logger
 
         self.mac = mac
@@ -39,7 +39,7 @@ class MADDPGLearner:
             device = "cpu"
             
         if self.args.standardise_returns:
-            self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
+            self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
         if self.args.standardise_rewards:
             self.rew_ms = RunningMeanStd(shape=(1,), device=device)
 
@@ -48,8 +48,8 @@ class MADDPGLearner:
         rewards = batch["rewards"][:, :-1]
         actions = batch["actions_onehot"]
         terminated = batch["terminated"][:, :-1].float()
-        rewards = rewards.unsqueeze(2).expand(-1, -1, self.n_agents, -1)
-        terminated = terminated.unsqueeze(2).expand(-1, -1, self.n_agents, -1)
+        rewards = rewards.unsqueeze(2).expand(-1, -1, self.n, -1)
+        terminated = terminated.unsqueeze(2).expand(-1, -1, self.n, -1)
         mask = 1 - terminated
         batch_size = batch.batch_size
 
@@ -59,7 +59,7 @@ class MADDPGLearner:
 
         # Train the critic
         inputs = self._build_inputs(batch)
-        actions = actions.view(batch_size, -1, 1, self.n_agents * self.n_actions).expand(-1, -1, self.n_agents, -1)
+        actions = actions.view(batch_size, -1, 1, self.n * self.m).expand(-1, -1, self.n, -1)
         q_taken = self.critic(inputs[:, :-1], actions[:, :-1].detach())
         q_taken = q_taken.view(batch_size, -1, 1)
 
@@ -71,7 +71,7 @@ class MADDPGLearner:
             target_actions.append(agent_target_outs)
         target_actions = th.stack(target_actions, dim=1)  # Concat over time
 
-        target_actions = target_actions.view(batch_size, -1, 1, self.n_agents * self.n_actions).expand(-1, -1, self.n_agents, -1)
+        target_actions = target_actions.view(batch_size, -1, 1, self.n * self.m).expand(-1, -1, self.n, -1)
         target_vals = self.target_critic(inputs[:, 1:], target_actions.detach())
         target_vals = target_vals.view(batch_size, -1, 1)
 
@@ -98,17 +98,17 @@ class MADDPGLearner:
         pis = []
         actions = []
         for t in range(batch.max_seq_length-1):
-            pi = self.mac.forward(batch, t=t).view(batch_size, 1, self.n_agents, -1)
+            pi = self.mac.forward(batch, t=t).view(batch_size, 1, self.n, -1)
             actions.append(gumbel_softmax(pi, hard=True))
             pis.append(pi)
         actions = th.cat(actions, dim=1)
-        actions = actions.view(batch_size, -1, 1, self.n_agents * self.n_actions).expand(-1, -1, self.n_agents, -1)
+        actions = actions.view(batch_size, -1, 1, self.n * self.m).expand(-1, -1, self.n, -1)
 
         new_actions = []
-        for i in range(self.n_agents):
-            temp_action = th.split(actions[:, :, i, :], self.n_actions, dim=2)
+        for i in range(self.n):
+            temp_action = th.split(actions[:, :, i, :], self.m, dim=2)
             actions_i = []
-            for j in range(self.n_agents):
+            for j in range(self.n):
                 if i == j:
                     actions_i.append(temp_action[j])
                 else:
@@ -157,7 +157,7 @@ class MADDPGLearner:
         ts = slice(None) if t is None else slice(t, t + 1)
 
         inputs = []
-        inputs.append(batch["state"][:, ts].unsqueeze(2).expand(-1, -1, self.n_agents, -1))
+        inputs.append(batch["state"][:, ts].unsqueeze(2).expand(-1, -1, self.n, -1))
         if self.args.obs_individual_obs:
             inputs.append(batch["obs"][:, ts])
 
@@ -170,10 +170,10 @@ class MADDPGLearner:
             else:
                 last_actions = th.cat([th.zeros_like(batch["actions_onehot"][:, 0:1]), batch["actions_onehot"][:, :-1]],
                                       dim=1)
-                # last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n_agents, 1)
+                # last_actions = last_actions.view(bs, max_t, 1, -1).repeat(1, 1, self.n, 1)
                 inputs.append(last_actions)
         if self.args.obs_agent_id:
-            inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
+            inputs.append(th.eye(self.n, device=batch.device).unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1))
 
         inputs = th.cat(inputs, dim=-1)
         return inputs

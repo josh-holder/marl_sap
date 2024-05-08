@@ -10,8 +10,8 @@ from components.standarize_stream import RunningMeanStd
 class COMALearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
-        self.n_agents = args.n_agents
-        self.n_actions = args.n_actions
+        self.n = args.n
+        self.m = args.m
         self.mac = mac
         self.logger = logger
 
@@ -37,7 +37,7 @@ class COMALearner:
             device = "cpu"
             
         if self.args.standardise_returns:
-            self.ret_ms = RunningMeanStd(shape=(self.n_agents,), device=device)
+            self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
         if self.args.standardise_rewards:
             self.rew_ms = RunningMeanStd(shape=(1,), device=device)
 
@@ -58,7 +58,7 @@ class COMALearner:
 
         critic_mask = mask.clone()
 
-        mask = mask.repeat(1, 1, self.n_agents).view(-1)
+        mask = mask.repeat(1, 1, self.n).view(-1)
 
         q_vals, critic_train_stats = self._train_critic(batch, rewards, terminated, actions, avail_actions,
                                                         critic_mask, bs, max_t)
@@ -73,8 +73,8 @@ class COMALearner:
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
         # Calculated baseline
-        q_vals = q_vals.reshape(-1, self.n_actions)
-        pi = mac_out.view(-1, self.n_actions)
+        q_vals = q_vals.reshape(-1, self.m)
+        pi = mac_out.view(-1, self.m)
         baseline = (pi * q_vals).sum(-1).detach()
 
         # Calculate policy grad with mask

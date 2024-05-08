@@ -1,9 +1,9 @@
 env: "power_constellation_env"
 
 env_args:
-  n_agents: 10
+  n: 10
   num_tasks: 10
-  episode_step_limit: 20
+  T: 20
   L: 3
   lambda_: 0.5
   bids_as_actions: null

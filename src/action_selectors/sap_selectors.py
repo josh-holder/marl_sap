@@ -20,11 +20,11 @@ class EpsilonGreedySAPTestActionSelector():
         self.epsilon = self.schedule.eval(t_env)
 
         num_batches = agent_inputs.shape[0]
-        n_agents = agent_inputs.shape[1]
-        n_actions = agent_inputs.shape[2]
+        n = agent_inputs.shape[1]
+        m = agent_inputs.shape[2]
 
         if test_mode:
-            picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
+            picked_actions = th.zeros(num_batches, n, device=self.args.device)
             for batch in range(num_batches):
                 # Solve the assignment problem for each batch, converting to numpy first
                 benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().cpu()
@@ -63,16 +63,16 @@ class SequentialAssignmentProblemSelector():
             self.epsilon = self.args.evaluation_epsilon
 
         num_batches = agent_inputs.shape[0]
-        n_agents = agent_inputs.shape[1]
-        n_actions = agent_inputs.shape[2]
+        n = agent_inputs.shape[1]
+        m = agent_inputs.shape[2]
 
         if self.args.use_mps_action_selection:
-            picked_actions = th.zeros(num_batches, n_agents, device=self.args.device)
+            picked_actions = th.zeros(num_batches, n, device=self.args.device)
         else:
-            picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+            picked_actions = th.zeros(num_batches, n, device="cpu")
         for batch in range(num_batches):
             if np.random.rand() < self.epsilon:
-                picked_actions[batch, :] = th.randperm(n_agents)
+                picked_actions[batch, :] = th.randperm(n)
             else:
                 # Solve the assignment problem for each batch, moving to cpu first
                 benefit_matrix_from_q_values = agent_inputs[batch, :, :].detach().cpu()

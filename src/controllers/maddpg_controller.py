@@ -48,7 +48,7 @@ def gumbel_softmax(logits, temperature=1.0, hard=False):
 # This multi-agent controller shares parameters between agents
 class MADDPGMAC:
     def __init__(self, scheme, groups, args):
-        self.n_agents = args.n_agents
+        self.n = args.n
         self.args = args
         input_shape = self._get_input_shape(scheme)
         self._build_agents(input_shape)
@@ -61,8 +61,8 @@ class MADDPGMAC:
     def select_actions(self, ep_batch, t_ep, t_env=0, test_mode=False):
         # Only select actions for the selected batch elements in bs
         agent_outputs = self.forward(ep_batch, t_ep)
-        chosen_actions = gumbel_softmax(agent_outputs, hard=True).argmax(dim=-1)
-        return chosen_actions
+        chosem = gumbel_softmax(agent_outputs, hard=True).argmax(dim=-1)
+        return chosem
 
     def target_actions(self, ep_batch, t_ep):
         agent_outputs = self.forward(ep_batch, t_ep)
@@ -72,12 +72,12 @@ class MADDPGMAC:
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
-        agent_outs = agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
+        agent_outs = agent_outs.view(ep_batch.batch_size, self.n, -1)
         agent_outs[avail_actions==0] = -1e10
         return agent_outs
 
     def init_hidden(self, batch_size):
-        self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
+        self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n, -1)  # bav
 
     def init_hidden_one_agent(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, -1)  # bav
@@ -112,9 +112,9 @@ class MADDPGMAC:
             else:
                 inputs.append(batch["actions_onehot"][:, t-1])
         if self.args.obs_agent_id:
-            inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+            inputs.append(th.eye(self.n, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
 
-        inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
+        inputs = th.cat([x.reshape(bs*self.n, -1) for x in inputs], dim=1)
         return inputs
 
     def _get_input_shape(self, scheme):
@@ -122,6 +122,6 @@ class MADDPGMAC:
         if self.args.obs_last_action:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
-            input_shape += self.n_agents
+            input_shape += self.n
 
         return input_shape

@@ -50,7 +50,7 @@ class QLearner:
             mac_hidden_states.append(self.mac.hidden_states)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
         mac_hidden_states = th.stack(mac_hidden_states, dim=1)
-        mac_hidden_states = mac_hidden_states.reshape(batch.batch_size, self.args.n_agents, batch.max_seq_length, -1).transpose(1,2) #btav
+        mac_hidden_states = mac_hidden_states.reshape(batch.batch_size, self.args.n, batch.max_seq_length, -1).transpose(1,2) #btav
 
         # Pick the Q-Values for the actions taken by each agent
         chosen_action_qvals = th.gather(mac_out[:, :-1], dim=3, index=actions).squeeze(3)  # Remove the last dim
@@ -67,7 +67,7 @@ class QLearner:
         # We don't need the first timesteps Q-Value estimate for calculating targets
         target_mac_out = th.stack(target_mac_out[:], dim=1)  # Concat across time
         target_mac_hidden_states = th.stack(target_mac_hidden_states, dim=1)
-        target_mac_hidden_states = target_mac_hidden_states.reshape(batch.batch_size, self.args.n_agents, batch.max_seq_length, -1).transpose(1,2) #btav
+        target_mac_hidden_states = target_mac_hidden_states.reshape(batch.batch_size, self.args.n, batch.max_seq_length, -1).transpose(1,2) #btav
 
         # Mask out unavailable actions
         target_mac_out[avail_actions[:, :] == 0] = -9999999  # From OG deepmarl
@@ -86,11 +86,11 @@ class QLearner:
 
             # Need to argmax across the target agents' actions to compute target joint-action Q-Values
             if self.args.double_q:
-                max_actions_current_ = th.zeros(size=(batch.batch_size, batch.max_seq_length, self.args.n_agents, self.args.n_actions), device=batch.device)
+                max_actions_current_ = th.zeros(size=(batch.batch_size, batch.max_seq_length, self.args.n, self.args.m), device=batch.device)
                 max_actions_current_onehot = max_actions_current_.scatter(3, max_actions_current[:, :], 1)
                 max_actions_onehot = max_actions_current_onehot
             else:
-                max_actions = th.zeros(size=(batch.batch_size, batch.max_seq_length, self.args.n_agents, self.args.n_actions), device=batch.device)
+                max_actions = th.zeros(size=(batch.batch_size, batch.max_seq_length, self.args.n, self.args.m), device=batch.device)
                 max_actions_onehot = max_actions.scatter(3, target_max_actions[:, :], 1)
             target_joint_qs, target_vs = self.target_mixer(batch[:, 1:], hidden_states=target_mac_hidden_states[:,1:], actions=max_actions_onehot[:,1:])
 
@@ -104,7 +104,7 @@ class QLearner:
             # -- Opt Loss --
             # Argmax across the current agents' actions
             if not self.args.double_q: # Already computed if we're doing double Q-Learning
-                max_actions_current_ = th.zeros(size=(batch.batch_size, batch.max_seq_length, self.args.n_agents, self.args.n_actions), device=batch.device )
+                max_actions_current_ = th.zeros(size=(batch.batch_size, batch.max_seq_length, self.args.n, self.args.m), device=batch.device )
                 max_actions_current_onehot = max_actions_current_.scatter(3, max_actions_current[:, :], 1)
             max_joint_qs, _ = self.mixer(batch[:, :-1], mac_hidden_states[:,:-1], actions=max_actions_current_onehot[:,:-1]) # Don't use the target network and target agent max actions as per author's email
 
@@ -149,7 +149,7 @@ class QLearner:
                 self.logger.log_stat("td_targets", ((masked_td_error).sum().item()/mask_elems), t_env)
                 self.logger.log_stat("td_chosen_qs", (joint_qs.sum().item()/mask_elems), t_env)
                 self.logger.log_stat("v_mean", (vs.sum().item()/mask_elems), t_env)
-                self.logger.log_stat("agent_indiv_qs", ((chosen_action_qvals * mask).sum().item()/(mask_elems * self.args.n_agents)), t_env)
+                self.logger.log_stat("agent_indiv_qs", ((chosen_action_qvals * mask).sum().item()/(mask_elems * self.args.n)), t_env)
             self.log_stats_t = t_env
 
     def _update_targets(self):

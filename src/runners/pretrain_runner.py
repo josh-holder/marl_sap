@@ -32,7 +32,7 @@ class PretrainRunner:
 
         self.parent_conns[0].send(("get_env_info", None))
         self.env_info = self.parent_conns[0].recv()
-        self.episode_step_limit = self.env_info["episode_step_limit"]
+        self.T = self.env_info["T"]
 
         self.t = 0
         self.b = 0
@@ -41,7 +41,7 @@ class PretrainRunner:
 
         self.pretrain_fn = pretrainerREGISTRY[self.args.pretrain_fn]
 
-        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.episode_step_limit + 1,
+        self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.T + 1,
                                 preprocess=self.buffer.preprocess, device="cpu")
 
     def get_env_info(self):
@@ -143,7 +143,7 @@ class PretrainRunner:
                     post_transition_data["rewards"].append((data["rewards"],))
 
                     env_terminated = False
-                    if data["terminated"] and not data["info"].get("episode_step_limit", False):
+                    if data["terminated"] and not data["info"].get("T", False):
                         env_terminated = True
                     terminated[idx] = data["terminated"]
                     post_transition_data["terminated"].append((env_terminated,))
@@ -234,10 +234,10 @@ def NHAPretrainer(batch):
     state = batch["state"]
     num_batches = state.shape[0]
     n_timesteps = state.shape[1] #this should always be 1, because we are taking one step at a time
-    n_agents = state.shape[2]
-    n_actions = state.shape[3]
+    n = state.shape[2]
+    m = state.shape[3]
 
-    picked_actions = th.zeros(num_batches, n_agents, device="cpu")
+    picked_actions = th.zeros(num_batches, n, device="cpu")
     
     for batch in range(num_batches):
         _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, 0, :, :], maximize=True)

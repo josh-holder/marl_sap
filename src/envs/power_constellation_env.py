@@ -13,8 +13,8 @@ class PowerConstellationEnv(Env):
     Model a constellation, where benefits are provided to you for task in several states
     """
     def __init__(self,
-                 n_agents, num_tasks, 
-                 episode_step_limit, 
+                 n, num_tasks, 
+                 T, 
                  L, lambda_,
                  bids_as_actions=False,
                  seed=None,
@@ -23,17 +23,17 @@ class PowerConstellationEnv(Env):
         self.logger = logging.getLogger(__name__)
         self.seed(seed)
 
-        self.n_agents = n_agents
-        self.num_tasks = num_tasks
-        self.episode_step_limit = episode_step_limit
-        print(f"Episode step limit: {self.episode_step_limit}")
+        self.n = n
+        self.m = num_tasks
+        self.T = T
+        print(f"Episode step limit: {self.T}")
 
         self.benefit_fn = meaningful_task_handover_pen_benefit_fn
         self.benefit_info = benefit_info
 
         if sat_prox_mat is None:
             self.constant_benefits = False
-            self.sat_prox_mat = generate_benefits_over_time(n_agents, num_tasks, episode_step_limit, 3, 6)
+            self.sat_prox_mat = generate_benefits_over_time(n, num_tasks, T, 3, 6)
         else:
             self.constant_benefits = True
             self.sat_prox_mat = sat_prox_mat
@@ -45,22 +45,22 @@ class PowerConstellationEnv(Env):
         self.init_assignment = None
 
         #State is the previous assignment, plus the power state of the satellite
-        self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
-        self.power_states = np.ones(self.n_agents)
+        self.curr_assignment = np.zeros((self.n, self.m))
+        self.power_states = np.ones(self.n)
 
         self.k = 0
 
         self.bids_as_actions = bids_as_actions
         if self.bids_as_actions:
             #Action space is a bid for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.num_tasks,))] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=0, high=np.inf, shape=(self.m,))] * self.n))
         else:
             #Action space is one action for each task
-            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.num_tasks)] * self.n_agents))
+            self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(self.m)] * self.n))
 
         #Observation space is just the benefits per task for the next L time steps, plus the agent's previous assignment, plus the power state.
-        self.obs_space_size = self.L * self.num_tasks + self.num_tasks + 1
-        self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n_agents))
+        self.obs_space_size = self.L * self.m + self.m + 1
+        self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n))
 
     def step(self, actions):
         """ 
@@ -76,13 +76,13 @@ class PowerConstellationEnv(Env):
 
         adj_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k], self.curr_assignment, self.lambda_)
 
-        num_times_tasks_completed = np.zeros(self.num_tasks)
-        for i in range(self.n_agents):
+        num_times_tasks_completed = np.zeros(self.m)
+        for i in range(self.n):
             if self.power_states[i] > 0:
                 num_times_tasks_completed[assignments[i]] += 1
 
         rewards = []
-        for i in range(self.n_agents):
+        for i in range(self.n):
             if self.power_states[i] > 0:
                 chosen_task = assignments[i]
                 if adj_benefits[i, chosen_task] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
@@ -93,12 +93,12 @@ class PowerConstellationEnv(Env):
                 rewards.append(0)
 
         #Update the prev assignment:
-        self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
-        for i in range(self.n_agents):
+        self.curr_assignment = np.zeros((self.n, self.m))
+        for i in range(self.n):
             self.curr_assignment[i, assignments[i]] = 1
 
         #Update agent power states
-        for i in range(self.n_agents):
+        for i in range(self.n):
             if self.power_states[i] > 0:
                 chosen_task = assignments[i]
                 if self.sat_prox_mat[i,chosen_task,self.k] > 1e-12:
@@ -113,35 +113,35 @@ class PowerConstellationEnv(Env):
 
         self.k += 1        
 
-        self._obs = [self.curr_assignment[i,:] for i in range(self.n_agents)]
+        self._obs = [self.curr_assignment[i,:] for i in range(self.n)]
         for l in range(self.L):
-            if self.k + l < self.episode_step_limit:
-                self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n_agents)]
+            if self.k + l < self.T:
+                self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n)]
             else: #if the episode has ended within your lookahead of L, just pad with zeros
-                self._obs = [np.concatenate([self._obs[i], np.zeros(self.num_tasks)]) for i in range(self.n_agents)]
-        self._obs = [np.concatenate([self._obs[i], [self.power_states[i]]]) for i in range(self.n_agents)] #add power state
+                self._obs = [np.concatenate([self._obs[i], np.zeros(self.m)]) for i in range(self.n)]
+        self._obs = [np.concatenate([self._obs[i], [self.power_states[i]]]) for i in range(self.n)] #add power state
 
-        done = self.k >= self.episode_step_limit
+        done = self.k >= self.T
         return rewards, done, {}
 
     def reset(self):
         """ Resets environment."""
-        self.curr_assignment = np.zeros((self.n_agents, self.num_tasks))
+        self.curr_assignment = np.zeros((self.n, self.m))
         self.k = 0
-        self.power_states = np.ones(self.n_agents)
+        self.power_states = np.ones(self.n)
 
         if not self.constant_benefits:
-            self.sat_prox_mat = generate_benefits_over_time(self.n_agents, self.num_tasks, self.episode_step_limit, 3, 6)
+            self.sat_prox_mat = generate_benefits_over_time(self.n, self.m, self.T, 3, 6)
         else:
             pass #if benefits are constant, do nothing because you should use the same benefit matrix
 
-        self._obs = [self.curr_assignment[i,:] for i in range(self.n_agents)]
+        self._obs = [self.curr_assignment[i,:] for i in range(self.n)]
         for l in range(self.L):
-            if self.k + l < self.episode_step_limit:
-                self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n_agents)]
+            if self.k + l < self.T:
+                self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n)]
             else: #if the episode has ended within your lookahead of L, just pad with zeros
-                self._obs = [np.concatenate([self._obs[i], np.zeros(self.num_tasks)]) for i in range(self.n_agents)]
-        self._obs = [np.concatenate([self._obs[i], [self.power_states[i]]]) for i in range(self.n_agents)] #reset all agents to full power
+                self._obs = [np.concatenate([self._obs[i], np.zeros(self.m)]) for i in range(self.n)]
+        self._obs = [np.concatenate([self._obs[i], [self.power_states[i]]]) for i in range(self.n)] #reset all agents to full power
 
         return self.get_obs(), self.get_state()
 
@@ -171,11 +171,11 @@ class PowerConstellationEnv(Env):
 
     def get_state_size(self):
         """ Returns the shape of the state"""
-        return self.n_agents * self.get_obs_size()
+        return self.n * self.get_obs_size()
 
     def get_avail_actions(self):
         """ All actions are available."""
-        return [self.get_avail_agent_actions(agent_id) for agent_id in range(self.n_agents)]
+        return [self.get_avail_agent_actions(agent_id) for agent_id in range(self.n)]
 
     def get_avail_agent_actions(self, agent_id):
         """ Returns the available actions for agent_id (all actions are always available)"""
@@ -183,7 +183,7 @@ class PowerConstellationEnv(Env):
 
     def get_total_actions(self):
         """ Returns the total number of actions an agent could ever take """
-        return self.num_tasks
+        return self.m
     
     def get_stats(self):
         return {}
@@ -191,9 +191,9 @@ class PowerConstellationEnv(Env):
     def get_env_info(self):
         env_info = {"state_shape": self.get_state_size(),
                     "obs_shape": self.get_obs_size(),
-                    "n_actions": self.get_total_actions(),
-                    "n_agents": self.n_agents,
-                    "episode_step_limit": self.episode_step_limit}
+                    "m": self.get_total_actions(),
+                    "n": self.n,
+                    "T": self.T}
         return env_info
 
 def meaningful_task_handover_pen_benefit_fn(sat_prox_mat, prev_assign, lambda_, benefit_info=None):
