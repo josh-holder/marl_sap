@@ -15,7 +15,7 @@ env_args:
 cooperative_rewards: False
 
 test_greedy: True
-test_nepisode: 30
+test_nepisode: 20
 test_interval: 50000
 log_interval: 50000
 runner_log_interval: 5000

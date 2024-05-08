@@ -1,13 +1,19 @@
 # --- IQL SAP specific parameters ---
 
 # use epsilon greedy action selector
-action_selector: "real_const_sap"
-epsilon_start: 1.0
-epsilon_finish: 0.05
-epsilon_anneal_time: 250000
+action_selector: "filtered_const_sap"
+epsilon_start: 0.04
+epsilon_finish: 0.005
+epsilon_anneal_time: 150000
 evaluation_epsilon: 0
 
-t_max: 1000000
+# Pretraining configs
+use_offline_dataset: True #use JumpstartRL rather than offline dataset by default.
+offline_dataset_path: null
+pretrain_fn: null
+pretrain_batches: 1000
+
+t_max: 500000
 
 runner: "episode"
 
@@ -34,9 +40,5 @@ double_q: True
 use_rnn: False
 mixer:
 
-# Pretraining configs
-use_offline_dataset: True
-offline_dataset_path: null
-pretrain_fn: "nha_pretrainer"
 
 name: "iql_sap"

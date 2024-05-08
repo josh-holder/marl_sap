@@ -236,9 +236,19 @@ def run_sequential(args, logger):
 
     #Train on the offline dataset.
     if use_offline_dataset:
+        logger.console_logger.info("Testing model before pretraining...")
+        n_test_runs = max(1, args.test_nepisode // runner.batch_size)
+        for _ in range(n_test_runs):
+            runner.run(test_mode=True)
+        save_path = os.path.join(
+                args.local_results_path, "models", args.unique_token, "-1"
+            )
+        os.makedirs(save_path, exist_ok=True)
+        logger.console_logger.info("Saving models to {}".format(save_path))
+
         pretrain_batches = 0
         while pretrain_batches < args.pretrain_batches:
-            if pretrain_batches % 100: logger.console_logger.info(f"Pretraining, {pretrain_batches}/{args.pretrain_batches}")
+            if (pretrain_batches % 50) == 0: logger.console_logger.info(f"Pretraining, {pretrain_batches}/{args.pretrain_batches}")
             episode_sample = buffer.sample(args.batch_size)
 
             # Truncate batch to only filled timesteps
@@ -249,7 +259,8 @@ def run_sequential(args, logger):
             if episode_sample.device != args.device:
                 episode_sample.to(args.device)
 
-            learner.train(episode_sample, runner.t_env, episode_num=0)
+            learner.train(episode_sample, 0, episode_num=0)
+            pretrain_batches += 1
 
     # start training
     episode = 0
