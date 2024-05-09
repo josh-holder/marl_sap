@@ -7,6 +7,7 @@ import gym
 from gym.utils import seeding
 import numpy as np
 import scipy.optimize
+import torch as th
 
 from .HighPerformanceConstellationSim import HighPerformanceConstellationSim
 
@@ -284,6 +285,10 @@ class RealConstellationEnv(Env):
 
         If initially has a batch dimension, outputs a batch_dim x n x m x L matrix.
         """
+        #if sat_prox_mat or prev_assigns is a tensor, convert to numpy
+        if isinstance(sat_prox_mat, th.Tensor): sat_prox_mat = sat_prox_mat.numpy()
+        if isinstance(prev_assigns, th.Tensor): prev_assigns = prev_assigns.numpy()
+        
         init_dim = sat_prox_mat.ndim
         if init_dim == 3: 
             sat_prox_mat = np.expand_dims(sat_prox_mat, axis=0)

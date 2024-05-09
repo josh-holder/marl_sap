@@ -33,8 +33,9 @@ class EpisodeRunner:
                                     preprocess=preprocess, device=self.args.device)
         self.mac = mac
 
-        #Add decoder to action selector
-        self.mac.action_selector.state_decoder = self.env.state_decoder
+        #Add environment to action selector
+        self.mac.action_selector.env = self.env
+        self.mac.jumpstart_action_selector.env = self.env
 
     def get_env_info(self):
         return self.env.get_env_info()
@@ -72,7 +73,7 @@ class EpisodeRunner:
 
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch of size 1
-            actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode)
+            actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode, env=self.env)
 
             rewards, terminated, env_info = self.env.step(actions[0])
             if test_mode and self.args.render:

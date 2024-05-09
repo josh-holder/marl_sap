@@ -186,7 +186,7 @@ def run_sequential(args, logger):
     # Setup multiagent controller here
     mac = mac_REGISTRY[args.mac](buffer.scheme, groups, args)
 
-    # Give runner the scheme
+    # Give runner the scheme, create env and give it to the mac as well
     runner.setup(scheme=scheme, groups=groups, preprocess=preprocess, mac=mac)
 
     # Learner

@@ -20,7 +20,7 @@ class FilteredSAPActionSelector():
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
-        decoded_state = self.state_decoder(state)
+        decoded_state = self.env.state_decoder(state)
         beta = decoded_state[0]
         total_beta = beta.sum(axis=-1)
 

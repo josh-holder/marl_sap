@@ -1,4 +1,5 @@
 from envs import REGISTRY as env_REGISTRY
+from action_selectors import REGISTRY as non_rl_selector_REGISTRY
 from functools import partial
 from components.episode_buffer import EpisodeBatch
 from multiprocessing import Pipe, Process
@@ -6,7 +7,6 @@ import numpy as np
 import torch as th
 import scipy.optimize
 
-import time
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
 class PretrainRunner:
@@ -22,6 +22,7 @@ class PretrainRunner:
         env_args = [self.args.env_args.copy() for _ in range(self.batch_size)]
         for i in range(self.batch_size):
             env_args[i]["seed"] += i
+        self.sample_env = env_fn(**self.args.env_args)
 
         self.ps = [Process(target=env_worker, args=(worker_conn, CloudpickleWrapper(partial(env_fn, **env_arg))))
                             for env_arg, worker_conn in zip(env_args, self.worker_conns)]
@@ -39,7 +40,7 @@ class PretrainRunner:
 
         self.buffer = buffer
 
-        self.pretrain_fn = pretrainerREGISTRY[self.args.pretrain_fn]
+        self.pretrain_fn = non_rl_selector_REGISTRY[self.args.pretrain_fn]
 
         self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.T + 1,
                                 preprocess=self.buffer.preprocess, device="cpu")
@@ -80,12 +81,10 @@ class PretrainRunner:
         """
         while self.b < self.args.buffer_size:
             if (self.b % 100) == 0: self.logger.console_logger.info(f"Generating offline dataset: {self.b}/{self.args.buffer_size}")
-            st = time.time()
             episode_batch = self.run()
             self.buffer.insert_episode_batch(episode_batch)
 
             self.b += self.batch_size
-            print(f"Time taken: {(time.time() - st)/self.batch_size} sec per batch")
 
         return self.buffer
 
@@ -99,7 +98,9 @@ class PretrainRunner:
         while True:
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
-            actions = self.pretrain_fn(self.batch[:,self.t])
+            # NOTE: will need to actually pass in env per batch if I use HAAL to generate databases.
+            # NOTE: might break because of the timestep situation - betahat expects no timestep axis?
+            actions = self.pretrain_fn(self.args, self.batch[:,self.t]["state"], self.sample_env)
 
             # Update the actions taken
             actions_chosen = {
@@ -222,27 +223,3 @@ class CloudpickleWrapper():
     def __setstate__(self, ob):
         import pickle
         self.x = pickle.loads(ob)
-
-pretrainerREGISTRY = {}
-
-def NHAPretrainer(batch):
-    """
-    Input: batch to take NHA action on.
-
-    Output: actions taken for the batch.
-    """
-    state = batch["state"]
-    num_batches = state.shape[0]
-    n_timesteps = state.shape[1] #this should always be 1, because we are taking one step at a time
-    n = state.shape[2]
-    m = state.shape[3]
-
-    picked_actions = th.zeros(num_batches, n, device="cpu")
-    
-    for batch in range(num_batches):
-        _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, 0, :, :], maximize=True)
-        picked_actions[batch, :] = th.tensor(col_ind)
-
-    return picked_actions
-
-pretrainerREGISTRY["nha_pretrainer"] = NHAPretrainer
