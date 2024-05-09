@@ -1,5 +1,4 @@
 from functools import partial
-from smac.env import StarCraft2Env
 from envs.multiagentenv import MultiAgentEnv
 from envs.benefit_obs_env import BenefitObsEnv
 from envs.mock_constellation_env import MockConstellationEnv
@@ -20,17 +19,16 @@ def env_fn(env, **kwargs) -> MultiAgentEnv:
 
 
 REGISTRY = {}
-REGISTRY["sc2"] = partial(env_fn, env=StarCraft2Env)
 REGISTRY["benefit_obs_env"] = partial(env_fn, env=BenefitObsEnv)
 REGISTRY["mock_constellation_env"] = partial(env_fn, env=MockConstellationEnv)
 REGISTRY["power_constellation_env"] = partial(env_fn, env=PowerConstellationEnv)
 REGISTRY["real_constellation_env"] = partial(env_fn, env=RealConstellationEnv)
 REGISTRY["real_power_constellation_env"] = partial(env_fn, env=RealPowerConstellationEnv)
 
-if sys.platform == "linux":
-    os.environ.setdefault(
-        "SC2PATH", os.path.join(os.getcwd(), "3rdparty", "StarCraftII")
-    )
+# if sys.platform == "linux":
+#     os.environ.setdefault(
+#         "SC2PATH", os.path.join(os.getcwd(), "3rdparty", "StarCraftII")
+#     )
 
 
 class TimeLimit(GymTimeLimit):

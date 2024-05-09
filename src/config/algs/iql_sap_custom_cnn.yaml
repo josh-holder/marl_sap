@@ -24,7 +24,7 @@ t_max: 500000
 
 runner: "episode"
 
-buffer_size: 2000
+buffer_size: 1000
 
 # update the target network every {} episodes
 target_update_interval_or_tau: 0.01

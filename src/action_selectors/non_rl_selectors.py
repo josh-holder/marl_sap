@@ -1,11 +1,9 @@
 import torch as th
 import scipy.optimize
-import sys
 import numpy as np
 from copy import deepcopy
-sys.path.append('/Users/joshholder/code/satellite-constellation')
 
-from common.methods import generate_all_time_intervals, build_time_interval_sequences
+from utils.methods import generate_all_time_intervals, build_time_interval_sequences
 
 REGISTRY = {}
 
@@ -37,8 +35,6 @@ class HAASelector(object):
             #Optimize using only the beta_hat from the current timestep
             _, col_ind = scipy.optimize.linear_sum_assignment(beta_hat[0, :, :, 0], maximize=True)
             picked_actions[batch_num, :] = th.tensor(col_ind)
-
-        print(sum(self.envs[0].power_states > 0))
 
         return picked_actions
 
@@ -108,7 +104,6 @@ class HAALSelector(object):
 
             picked_actions[batch_num, :] = th.tensor(best_assignment)
 
-        print(sum(self.envs[0].power_states > 0))
         return picked_actions
 
 REGISTRY["haal_selector"] = HAALSelector

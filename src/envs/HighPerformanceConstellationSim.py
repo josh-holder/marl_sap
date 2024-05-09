@@ -7,11 +7,6 @@ from copy import deepcopy
 from collections import defaultdict
 
 import sys
-sys.path.append('/Users/joshholder/code/satellite-constellation')
-from constellation_sim.Satellite import Satellite
-from constellation_sim.Task import Task
-
-from common.methods import *
 
 from poliastro.bodies import Earth
 from poliastro.twobody import Orbit
@@ -151,3 +146,22 @@ def calc_fov_based_proximities_fast(sat_r, task_r, fov, gaussian_sigma_2):
         task_proximity = 0
         
     return task_proximity
+
+class Satellite(object):
+    def __init__(self, orbit, id=None, plane_id=None, fov=60):
+        self.orbit = orbit
+        #Can disable if worried about performance, just used for plotting
+        self.init_orbit = deepcopy(orbit)
+
+        self.id = id
+        self.plane_id = plane_id
+
+        self.fov = fov
+
+    def propagate_orbit(self, time):
+        """
+        Given a time interval (a astropy quantity object),
+        propagates the orbit of the satellite.
+        """
+        self.orbit = self.orbit.propagate(time)
+        return self.orbit
