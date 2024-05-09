@@ -1,5 +1,4 @@
 from functools import partial
-import pretrained
 from smac.env import StarCraft2Env
 from envs.multiagentenv import MultiAgentEnv
 from envs.benefit_obs_env import BenefitObsEnv

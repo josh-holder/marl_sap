@@ -8,7 +8,7 @@ epsilon_anneal_time: 600000
 evaluation_epsilon: 0
 
 # Pretraining configs
-use_offline_dataset: True #use JumpstartRL rather than offline dataset by default.
+use_offline_dataset: False #use JumpstartRL rather than offline dataset by default.
 offline_dataset_path: null
 pretrain_fn: null
 pretrain_batches: 1000

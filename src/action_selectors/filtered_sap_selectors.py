@@ -20,13 +20,17 @@ class FilteredSAPActionSelector():
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
+        decoded_state = self.state_decoder(state)
+        beta = decoded_state[0]
+        total_beta = beta.sum(axis=-1)
+
         if test_mode:
             # Greedy action selection only
             self.epsilon = self.args.evaluation_epsilon
 
-        num_batches = state.shape[0]
-        n = state.shape[1]
-        m = state.shape[2]
+        num_batches = beta.shape[0]
+        n = beta.shape[1]
+        m = beta.shape[2]
 
         if self.args.use_mps_action_selection:
             picked_actions = th.zeros(num_batches, n, device=self.args.device)
@@ -46,7 +50,7 @@ class FilteredSAPActionSelector():
             benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
             #find M max indices in total_agent_benefits_by_task
-            top_agent_tasks = th.topk(state[batch, :, :], k=self.args.env_args['M'], dim=-1).indices
+            top_agent_tasks = th.topk(total_beta[batch, :, :], k=self.args.env_args['M'], dim=-1).indices
 
             #find M max indices in total_agent_benefits_by_task
             indices = th.tensor(np.indices(top_agent_tasks.shape))

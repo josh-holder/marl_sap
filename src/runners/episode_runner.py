@@ -33,6 +33,9 @@ class EpisodeRunner:
                                     preprocess=preprocess, device=self.args.device)
         self.mac = mac
 
+        #Add decoder to action selector
+        self.mac.action_selector.state_decoder = self.env.state_decoder
+
     def get_env_info(self):
         return self.env.get_env_info()
 

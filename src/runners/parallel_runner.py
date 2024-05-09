@@ -52,6 +52,8 @@ class ParallelRunner:
             self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.T + 1,
                                     preprocess=preprocess, device=self.args.device)
         self.mac = mac
+        self.mac.action_selector.state_decoder = self.env.state_decoder
+
         self.scheme = scheme
         self.groups = groups
         self.preprocess = preprocess

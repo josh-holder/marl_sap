@@ -36,8 +36,10 @@ class RealConstellationEnv(Env):
         self.L = min(L, self.T) #Number of steps to look into the future
 
         self.k = 0
-        self.curr_assignment = None
-        curr_sat_prox_mat = None #this is the benefits for this timestep, with the small amount of noise added to incentivize exploration
+        self.done = False
+
+        self.curr_sat_prox_mat = None
+        self.prev_assigns = None
 
         #~~~~~~~~~~~~~~~~~~~~~ CONSTELLATION SETUP ~~~~~~~~~~~~~~~~~~~~~
         if sat_prox_mat is None or graphs is None:
@@ -46,14 +48,14 @@ class RealConstellationEnv(Env):
             #Assume altitude 550, fov=60, fov_based_proximities, dt=1min, isl_dist=4000. Propagate orbits in advance.
             self.const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T=T)
             self.graphs = self.const.graphs
-            self.logger.console_logger.info(f"Time to generate constellation: {time.time()-st:.2f}s")
+            print(f"Time to generate constellation: {time.time()-st:.2f}s")
         else:
+            self.constant_benefits = True
             self.sat_prox_mat = sat_prox_mat
             self.graphs = graphs
             self.n = sat_prox_mat.shape[0]
             self.m = sat_prox_mat.shape[1]
             self.T = sat_prox_mat.shape[2]
-            self.constant_benefits = True
 
         #~~~~~~~~~~~~~~~~~~~~~ BENEFIT MATRIX PARAMETERS ~~~~~~~~~~~~~~~~~~~~~
         self.lambda_ = lambda_
@@ -76,6 +78,25 @@ class RealConstellationEnv(Env):
         self.obs_space_size = self.get_obs_size()
         self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n))
 
+    def reset(self):
+        """ Resets environment."""
+        self.k = 0
+        self.done = False
+
+        if not self.constant_benefits:
+            #Remove the tasks from the constellation and generate new ones
+            self.sat_prox_mat = self.const.get_proximities_for_random_tasks(self.m)
+        else:
+            pass #if benefits are constant, do nothing because you should use the same prox matrix
+
+        self.curr_sat_prox_mat = self.sat_prox_mat[:,:,self.k:self.k+self.L]
+        self.prev_assigns = np.random.choice(self.m, self.n, replace=False)
+
+        self._obs = self._build_obs()
+        self._state = self._build_state()
+
+        return self.get_obs(), self.get_state()
+
     def step(self, actions):
         """ 
         Input is actions in Discrete form (or bids if bids_as_actions is True.)
@@ -90,48 +111,34 @@ class RealConstellationEnv(Env):
         for i in range(self.n):
             num_times_tasks_completed[assignments[i]] += 1
 
-        #Compute the state dependent benefit matrix
-        beta_hat = self.beta_hat(self._state)
+        #Compute the state dependent benefit matrix.
+        #(This will only ever be a single batch, so we can should squeeze the batch dimension.)
+        beta_hat = self.beta_hat(self.curr_sat_prox_mat, self.prev_assigns)
 
-        #Update the rewards and current assignment
+        #Update the rewards and chosen assign matrix
         rewards = []
-        self.curr_assignment = np.zeros((self.n, self.m))
         for i in range(self.n):
             chosen_task = assignments[i]
-            if adj_benefits[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
-                rewards.append(adj_benefits[i, chosen_task, 0] / num_times_tasks_completed[chosen_task])
+            if beta_hat[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
+                rewards.append(beta_hat[i, chosen_task, 0] / num_times_tasks_completed[chosen_task])
             else:
-                rewards.append(adj_benefits[i, chosen_task, 0])
+                rewards.append(beta_hat[i, chosen_task, 0])
 
-            self.curr_assignment[i, chosen_task] = 1
         self.k += 1
             
-        done = self.k >= self.T
+        self.done = self.k >= self.T
 
         #Build observation and state for the next step
         effective_L = min(self.L, self.T - self.k)
-        curr_sat_prox_mat = self.sat_prox_mat[:,:,self.k:self.k+effective_L]
-        self._obs = self._build_obs(curr_sat_prox_mat, actions, done)
-        self._state = self._build_state(curr_sat_prox_mat, self.curr_assignment)
-
-        return rewards, done, {}
-
-    def reset(self):
-        """ Resets environment."""
-        self.curr_assignment = np.zeros((self.n, self.m))
-        self.k = 0
-
-        if not self.constant_benefits:
-            #Remove the tasks from the constellation and generate new ones
-            self.sat_prox_mat = self.const.get_proximities_for_random_tasks(self.m)
-        else:
-            pass #if benefits are constant, do nothing because you should use the same benefit matrix
+        self.curr_sat_prox_mat = self.sat_prox_mat[:,:,self.k:self.k+effective_L]
+        self.prev_assigns = assignments
 
         self._obs = self._build_obs()
+        self._state = self._build_state()
 
-        return self.get_obs(), self.get_state()
+        return rewards, self.done, {}
 
-    def _build_obs(self, curr_sat_prox_mat, actions, done):
+    def _build_obs(self):
         """
         Builds the observation for the next step.
         For agent i, observations are composed of the following components:
@@ -141,15 +148,15 @@ class RealConstellationEnv(Env):
          - neighboring_other_benefits, a N x M//2 x L matrix with the benefits for the OTHER top M//2 tasks for the N agents who most directly compete for the top M tasks.
             (this should give agents an intuition about how many other good options competing agents have.)
         """
-        if not done:
+        if not self.done:
             effective_L = min(self.L, self.T - self.k)
 
             observations = []
 
-            total_curr_prox = curr_sat_prox_mat.sum(axis=-1)
+            total_curr_prox = self.curr_sat_prox_mat.sum(axis=-1)
             for i in range(self.n):
                 # ~~~ Get the local benefits for agent i ~~~
-                agent_benefits = curr_sat_prox_mat[i,:,:]
+                agent_benefits = self.curr_sat_prox_mat[i,:,:]
 
                 total_agent_benefits = total_curr_prox[i,:]
 
@@ -167,7 +174,7 @@ class RealConstellationEnv(Env):
 
                 # ~~~ Get the neighboring benefits for agent i ~~~
                 neighboring_benefits = np.zeros((self.N, self.M, self.L))
-                neighboring_benefits[:,:,:effective_L] = curr_sat_prox_mat[top_n[:, np.newaxis], top_agent_tasks, :]
+                neighboring_benefits[:,:,:effective_L] = self.curr_sat_prox_mat[top_n[:, np.newaxis], top_agent_tasks, :]
 
                 # ~~~ Get the global benefits for agent i ~~~
                 total_benefits_without_top_M_tasks = np.copy(total_curr_prox)
@@ -178,35 +185,27 @@ class RealConstellationEnv(Env):
                 top_n_top_M_2_other_benefit_indices = np.argsort(top_n_total_benefits_without_top_M_tasks, axis=-1)[:, -self.M//2:]
 
                 neighboring_other_benefits = np.zeros((self.N, self.M//2, self.L))
-                neighboring_other_benefits[:,:,:effective_L] = curr_sat_prox_mat[top_n[:, np.newaxis], top_n_top_M_2_other_benefit_indices, :]
+                neighboring_other_benefits[:,:,:effective_L] = self.curr_sat_prox_mat[top_n[:, np.newaxis], top_n_top_M_2_other_benefit_indices, :]
 
-                # ~~~ Get agent previous actions ~~~
-                if actions is not None:
-                    agent_action_obs = np.where(top_agent_tasks == actions[i], 1, 0)
-                else:
-                    agent_action_obs = np.zeros(self.M)
+                # ~~~ Get agent previous assigns ~~~
+                agent_assigns_obs = np.where(top_agent_tasks == self.prev_assigns[i], 1, 0)
 
                 #flatten local_benefits, neighboring_benefits, and neighboring_other_benefits
-                observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), agent_action_obs)))
+                observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), agent_assigns_obs)))
         else: #otherwise, if done there are no benefits to observe. (and no actions either, because we can't do filtering based on them.)
-            curr_sat_prox_mat = np.zeros((self.n, self.m, self.L))
+            self.curr_sat_prox_mat = np.zeros((self.n, self.m, self.L))
             observations = [np.zeros(self.get_obs_size())] * self.n
 
         return observations
     
-    def _build_state(self, curr_sat_prox_mat, curr_assignment):
-        """
-        Takes in explicit arguments for the inputs to the state, rather than using self.
-
-        This allows it to calculate the state for a hypothetical future state, rather than the current state.
-        """
+    def _build_state(self):
         #Ensure that curr_sat_prox_mat is always n x m x L dimensional.
-        if curr_sat_prox_mat.ndim == 2: curr_sat_prox_mat = np.expand_dims(curr_sat_prox_mat, axis=2)
-        if curr_sat_prox_mat.shape[2] <= self.L: #pad last axis with zeros if necessary
-            curr_sat_prox_mat = np.concatenate((curr_sat_prox_mat, np.zeros((self.n, self.m, self.L-curr_sat_prox_mat.shape[2]))), axis=2)
+        if self.curr_sat_prox_mat.ndim == 2: self.curr_sat_prox_mat = np.expand_dims(self.curr_sat_prox_mat, axis=2)
+        if self.curr_sat_prox_mat.shape[2] <= self.L: #pad last axis with zeros if necessary
+            self.curr_sat_prox_mat = np.concatenate((self.curr_sat_prox_mat, np.zeros((self.n, self.m, self.L-self.curr_sat_prox_mat.shape[2]))), axis=2)
 
         #Flatten the current benefits and current assignment.
-        return np.concatenate((curr_sat_prox_mat.flatten(), curr_assignment.flatten()))
+        return np.concatenate((self.curr_sat_prox_mat.flatten(), self.prev_assigns))
 
     def close(self):
         return True
@@ -234,7 +233,26 @@ class RealConstellationEnv(Env):
 
     def get_state_size(self):
         """ Returns the shape of the state"""
-        return (self.n, self.m)
+        return self.n*self.m*self.L + self.n
+
+    def state_decoder(self, state):
+        """ 
+        Returns the individual components of the state.
+
+        Assume the state is a batch_dim x state_size matrix.
+        """
+        batch_dim = state.shape[0]
+        #~~~~~~~~~~~~~~~~~~~~~ GRAB INFO FROM STATE ~~~~~~~~~~~~~~~~~~~~~
+        beta_end = self.n*self.m*self.L
+        assigns_end = beta_end + self.m
+
+        #grab the first n x m x L entries of the state, and put them in a n x m x L matrix (repesenting the constant benefits for each agent-task pair at the next L timesteps)
+        sat_prox_mat = state[:, :beta_end].reshape(batch_dim, self.n, self.m, self.L)
+
+        #grab the next m entries of the state, and put them in a n x m length matrix (representing the current assignment of tasks)
+        assigns = state[:, beta_end:assigns_end].to(dtype=int)
+
+        return sat_prox_mat, assigns
 
     def get_avail_actions(self):
         """ All actions are available."""
@@ -259,27 +277,27 @@ class RealConstellationEnv(Env):
                     "T": self.T}
         return env_info
 
-    def beta_hat(self, state):
+    def beta_hat(self, sat_prox_mat, prev_assigns):
         """
-        Given a state, returns a n x m matrix of benefits for each agent-task pair.
+        Given the info contained in the state, 
+        returns a matrix of benefits for each agent-task pair.
+
+        If initially has a batch dimension, outputs a batch_dim x n x m x L matrix.
         """
-        #~~~~~~~~~~~~~~~~~~~~~ GRAB INFO FROM STATE ~~~~~~~~~~~~~~~~~~~~~
-        beta_end = self.n*self.m*self.L
-        action_end = beta_end + self.m
+        init_dim = sat_prox_mat.ndim
+        if init_dim == 3: 
+            sat_prox_mat = np.expand_dims(sat_prox_mat, axis=0)
+            prev_assigns = np.expand_dims(prev_assigns, axis=0)
+        batch_dim = sat_prox_mat.shape[0]
 
-        #grab the first n x m x L entries of the state, and put them in a n x m x L matrix (repesenting the constant benefits for each agent-task pair at the next L timesteps)
-        sat_prox_mat = state[:beta_end].reshape(self.n, self.m, self.L)
-
-        #grab the next m entries of the state, and put them in a n x m length matrix (representing the current assignment of tasks)
-        action = state[beta_end:action_end]
-        curr_assignment = np.zeros(self.n, self.m)
-        for i in range(self.n):
-            curr_assignment[i, action[i]] = 1
-
+        prev_assign_mat = np.zeros((batch_dim, self.n, self.m))
+        for batch in range(batch_dim):
+            for i in range(self.n):
+                prev_assign_mat[batch, i, prev_assigns[batch, i]] = 1
         #~~~~~~~~~~~~~~~~~~~~~ CALCULATE CONSTANT BENEFITS ~~~~~~~~~~~~~~~~~~~~~
-        #Expand the task priorities to be a n x m x L matrix from a m length vector.
-        expanded_task_prios = np.tile(self.task_prios, (self.n,1))
-        expanded_task_prios = np.repeat(expanded_task_prios[:,:,np.newaxis], self.L, axis=2)
+        #Expand the task priorities to be a batch_dim x n x m x L matrix from a m length vector.
+        expanded_task_prios = np.tile(self.task_prios, (batch_dim, self.n,1))
+        expanded_task_prios = np.repeat(expanded_task_prios[:,:,:,np.newaxis], self.L, axis=-1)
 
         #Get the constant benefits for each agent-task pair by multiplying the proximities with task priorities.
         beta = sat_prox_mat * expanded_task_prios
@@ -288,7 +306,7 @@ class RealConstellationEnv(Env):
         #Calculate which transitions are not penalized because of the type of task they are
         #(i.e. some tasks are dummy tasks, or correspond to the same task at a different priority, etc.)
         #this info is held in T_trans.
-        pen_locs_based_on_T_trans = curr_assignment @ self.T_trans
+        pen_locs_based_on_T_trans = prev_assign_mat @ self.T_trans
 
         #Calculate which transitions are not penalized because they are not meaningful tasks (i.e. have zero benefit)
         pen_locs_based_on_task_prios = beta.sum(-1) > 1e-12
@@ -298,6 +316,7 @@ class RealConstellationEnv(Env):
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~ APPLY HANDOVER PENALTY ~~~~~~~~~~~~~~~~~~~~~~~~~~~
         beta_hat = beta.copy()
-        beta_hat[:,:,0] = beta_hat[:,:,0]-self.lambda_*penalty_locations
+        beta_hat[:,:,:,0] = beta_hat[:,:,:,0]-self.lambda_*penalty_locations
 
+        if init_dim == 3: beta_hat = np.squeeze(beta_hat, axis=0)
         return beta_hat
