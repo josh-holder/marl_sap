@@ -101,9 +101,9 @@ class EpisodeRunner:
             print(f"Episode return: {episode_return}")
         self.batch.update(last_data, ts=self.t)
 
-        # Select actions in the last stored state
-        actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode)
-        self.batch.update({"actions": actions}, ts=self.t)
+        # Select actions in the last stored state (commenting out: why do we need this?)
+        # actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, test_mode=test_mode)
+        # self.batch.update({"actions": actions}, ts=self.t)
 
         cur_stats = self.test_stats if test_mode else self.train_stats
         cur_returns = self.test_returns if test_mode else self.train_returns
