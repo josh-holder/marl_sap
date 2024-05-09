@@ -106,46 +106,9 @@ def run_sequential(args, logger):
     runner = r_REGISTRY[args.runner](args=args, logger=logger)
 
     # Set up schemes and groups here
-    env_info = runner.get_env_info()
-    args.n = env_info["n"]
-    args.m = env_info["m"]
-    args.state_shape = env_info["state_shape"]
-
-    # Default/Base scheme
-    # scheme = {
-    #     "state": {"vshape": env_info["state_shape"]},
-    #     "obs": {"vshape": env_info["obs_shape"], "group": "agents"},
-    #     "actions": {"vshape": (1,), "group": "agents", "dtype": th.long},
-    #     "avail_actions": {
-    #         "vshape": (env_info["m"],),
-    #         "group": "agents",
-    #         "dtype": th.int,
-    #     },
-    #     "rewards": {"vshape": (1,)},
-    #     "terminated": {"vshape": (1,), "dtype": th.uint8},
-    # }
-    scheme = { #half precision
-        "state": {"vshape": env_info["state_shape"], "dtype": th.float16},
-        "obs": {"vshape": env_info["obs_shape"], "group": "agents", "dtype": th.float16},
-        "actions": {"vshape": (1,), "group": "agents", "dtype": th.int16},
-        "avail_actions": {
-            "vshape": (env_info["m"],),
-            "group": "agents",
-            "dtype": th.bool,
-        },
-        "rewards": {"vshape": (1,), "dtype": th.float16},
-        "terminated": {"vshape": (1,), "dtype": th.bool},
-    }
-    preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=env_info["m"])])}
-
-    #Adjust scheme based on configs
-    if getattr(args, "bids_as_actions", False):
-        #Bids are the actions, so m-dimensional, and no longer need to be one-hot encoded
-        scheme["actions"] = {"vshape": (env_info["m"],), "group": "agents", "dtype": th.float32}
-        preprocess = {}
-    if not getattr(args, "cooperative_rewards", False):
-        #Rewards are per-agent, so n-dimensional
-        scheme["rewards"] = {"vshape": (env_info["n"],), "dtype": th.float16}
+    sample_env = runner.get_env()
+    args.n = sample_env.n
+    args.m = sample_env.m
 
     groups = {"agents": args.n}
 
@@ -154,25 +117,25 @@ def run_sequential(args, logger):
     if not use_offline_dataset:
         logger.console_logger.info("No offline dataset desired - proceeding as normal.")
         buffer = ReplayBuffer(
-            scheme,
+            sample_env.scheme,
             groups,
             args.buffer_size,
-            env_info["T"] + 1, #max_seq_length
-            preprocess=preprocess,
+            sample_env.T + 1, #max_seq_length
+            preprocess=sample_env.preprocess,
             device="cpu" if args.buffer_cpu_only else args.device,
         )
     else:
         if args.offline_dataset_path is None:
             logger.console_logger.info("No offline dataset found: generating one with {}".format(args.pretrain_fn))
             buffer = ReplayBuffer(
-                scheme,
+                sample_env.scheme,
                 groups,
                 args.buffer_size,
-                env_info["T"] + 1, #max_seq_length
-                preprocess=preprocess,
+                sample_env.T + 1, #max_seq_length
+                preprocess=sample_env.preprocess,
                 device="cpu", #always generate on the CPU
             )
-            pretrain_runner = PretrainRunner(args, logger, buffer, scheme, groups) #need to provide scheme and groups explicitly so that the scheme doesn't contain filled
+            pretrain_runner = PretrainRunner(args, logger, buffer, sample_env.scheme, groups) #need to provide scheme and groups explicitly so that the scheme doesn't contain filled
             buffer = pretrain_runner.fill_buffer()
             with open(f"datasets/{args.unique_token}", 'wb') as f:
                 pickle.dump(buffer, f)
@@ -187,7 +150,7 @@ def run_sequential(args, logger):
     mac = mac_REGISTRY[args.mac](buffer.scheme, groups, args)
 
     # Give runner the scheme, create env and give it to the mac as well
-    runner.setup(scheme=scheme, groups=groups, preprocess=preprocess, mac=mac)
+    runner.setup(scheme=sample_env.scheme, groups=groups, preprocess=sample_env.preprocess, mac=mac)
 
     # Learner
     learner = le_REGISTRY[args.learner](mac, buffer.scheme, logger, args)

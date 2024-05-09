@@ -147,6 +147,7 @@ class EpisodeBatch:
             elif item in self.data.transition_data:
                 return self.data.transition_data[item]
             else:
+                print(item)
                 raise ValueError
         elif isinstance(item, tuple) and all([isinstance(it, str) for it in item]):
             #Return a new EpisodeBatch with only the specified keys

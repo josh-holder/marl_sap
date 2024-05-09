@@ -31,12 +31,12 @@ class JumpstartMAC:
             self.jumpstart_epsilon = self.args.jumpstart_evaluation_epsilon
 
         if np.random.rand() < self.jumpstart_epsilon:
-            return self.jumpstart_action_selector.select_action(ep_batch["state"][bs, t_ep])
+            return self.jumpstart_action_selector.select_action(ep_batch[bs, t_ep])
         # Only select actions for the selected batch elements in bs
         else:
             avail_actions = ep_batch["avail_actions"][:, t_ep]
             agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode, action_selection_mode=True)
-            chosem = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode, state=ep_batch["state"][bs, t_ep])
+            chosem = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode, beta=ep_batch["beta"][bs, t_ep])
             return chosem
 
     def forward(self, ep_batch, t, test_mode=False, action_selection_mode=False):

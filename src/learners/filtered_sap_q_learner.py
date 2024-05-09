@@ -67,8 +67,8 @@ class FilteredSAPQLearner:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
 
-        state = batch["state"].float()
-        top_agent_tasks = th.topk(state, k=self.args.env_args['M'], dim=-1).indices
+        total_beta = batch["beta"].float().sum(axis=-1)
+        top_agent_tasks = th.topk(total_beta, k=self.args.env_args['M'], dim=-1).indices
 
         # Calculate estimated Q-Values
         mac_out = []

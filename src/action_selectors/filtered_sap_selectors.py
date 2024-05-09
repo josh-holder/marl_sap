@@ -15,13 +15,11 @@ class FilteredSAPActionSelector():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
     
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
-        assert state is not None, "Need state to figure out which are the top M tasks for each agent."
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, beta=None):
+        assert beta is not None, "Need beta to figure out which are the top M tasks for each agent."
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
-        decoded_state = self.env.state_decoder(state)
-        beta = decoded_state[0]
         total_beta = beta.sum(axis=-1)
 
         if test_mode:
@@ -66,7 +64,7 @@ class FilteredSAPActionSelector():
 
 class FilteredSAPActionSelectorOld():
     """
-    Like SAP action selector, but for the real constellation environment, so gets the state to recover
+    Like SAP action selector, but for the real constellation environment, so gets the beta to recover
     which were the M best tasks.
     """
     def __init__(self, args):
@@ -76,8 +74,8 @@ class FilteredSAPActionSelectorOld():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
     
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
-        assert state is not None, "Need state to figure out which are the top M tasks for each agent."
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, beta=None):
+        assert beta is not None, "Need beta to figure out which are the top M tasks for each agent."
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
@@ -85,9 +83,9 @@ class FilteredSAPActionSelectorOld():
             # Greedy action selection only
             self.epsilon = self.args.evaluation_epsilon
 
-        num_batches = state.shape[0]
-        n = state.shape[1]
-        m = state.shape[2]
+        num_batches = beta.shape[0]
+        n = beta.shape[1]
+        m = beta.shape[2]
 
         if self.args.use_mps_action_selection:
             picked_actions = th.zeros(num_batches, n, device=self.args.device)
@@ -97,7 +95,7 @@ class FilteredSAPActionSelectorOld():
         for batch in range(num_batches):
             if np.random.rand() < self.epsilon:
                 # picked_actions[batch, :] = th.randperm(n)
-                _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, :, :].cpu(), maximize=True)
+                _, col_ind = scipy.optimize.linear_sum_assignment(beta[batch, :, :].cpu(), maximize=True)
                 picked_actions[batch, :] = th.tensor(col_ind)
             else:
                 # Solve the assignment problem for each batch, converting to numpy first
@@ -112,7 +110,7 @@ class FilteredSAPActionSelectorOld():
                 benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
                 #find M max indices in total_agent_benefits_by_task
-                top_agent_tasks = th.topk(state[batch, :, :], k=self.args.env_args['M'], dim=-1).indices
+                top_agent_tasks = th.topk(beta[batch, :, :], k=self.args.env_args['M'], dim=-1).indices
 
                 #find M max indices in total_agent_benefits_by_task
                 indices = th.tensor(np.indices(top_agent_tasks.shape))
@@ -135,14 +133,14 @@ class FilteredEpsGrSAPTestActionSelector():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
-        assert state is not None, "Need state to figure out which are the top M tasks for each agent."
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, beta=None):
+        assert beta is not None, "Need beta to figure out which are the top M tasks for each agent."
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
-        num_batches = state.shape[0]
-        n = state.shape[1]
-        m = state.shape[2]
+        num_batches = beta.shape[0]
+        n = beta.shape[1]
+        m = beta.shape[2]
 
         if test_mode:
             if self.args.use_mps_action_selection:
@@ -162,7 +160,7 @@ class FilteredEpsGrSAPTestActionSelector():
                 benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
                 #find M max indices in total_agent_benefits_by_task
-                top_agent_tasks = th.topk(state[batch,:,:], k=self.args.env_args['M'], dim=-1).indices
+                top_agent_tasks = th.topk(beta[batch,:,:], k=self.args.env_args['M'], dim=-1).indices
 
                 #find M max indices in total_agent_benefits_by_task
                 indices = th.tensor(np.indices(top_agent_tasks.shape))
@@ -178,7 +176,7 @@ class FilteredEpsGrSAPTestActionSelector():
                 else:
                     picked_actions = th.zeros(num_batches, n, device="cpu")
                 for batch in range(num_batches):
-                    _, col_ind = scipy.optimize.linear_sum_assignment(state[batch, :, :].cpu(), maximize=True)
+                    _, col_ind = scipy.optimize.linear_sum_assignment(beta[batch, :, :].cpu(), maximize=True)
                     picked_actions[batch, :] = th.tensor(col_ind)
                 return picked_actions
             else:
@@ -195,7 +193,7 @@ class FilteredEpsGrSAPTestActionSelector():
                 benefit_matrix_from_q_values += th.rand_like(benefit_matrix_from_q_values)*1e-8 #add noise to break ties between "do-nothing" actions randomly
 
                 #find M max indices in total_agent_benefits_by_task
-                top_agent_tasks = th.topk(state, k=self.args.env_args['M'], dim=-1).indices
+                top_agent_tasks = th.topk(beta, k=self.args.env_args['M'], dim=-1).indices
 
                 #find M max indices in total_agent_benefits_by_task
                 indices = th.tensor(np.indices(top_agent_tasks.shape))

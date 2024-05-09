@@ -3,6 +3,8 @@ from functools import partial
 from components.episode_buffer import EpisodeBatch
 import numpy as np
 import time
+from collections import defaultdict
+
 class EpisodeRunner:
     def __init__(self, args, logger):
         self.args = args
@@ -33,12 +35,15 @@ class EpisodeRunner:
                                     preprocess=preprocess, device=self.args.device)
         self.mac = mac
 
-        #Add environment to action selector
-        self.mac.action_selector.env = self.env
-        self.mac.jumpstart_action_selector.env = self.env
+        #Add environment to action selector (add in a list to be consistent w parallel)
+        self.mac.action_selector.envs = [self.env]
+        self.mac.jumpstart_action_selector.envs = [self.env]
 
     def get_env_info(self):
         return self.env.get_env_info()
+    
+    def get_env(self):
+        return self.env
 
     def save_replay(self):
         self.env.save_replay()
@@ -62,11 +67,7 @@ class EpisodeRunner:
 
         st = time.time()
         while not terminated:
-            pre_transition_data = {
-                "state": [self.env.get_state()],
-                "avail_actions": [self.env.get_avail_actions()],
-                "obs": [self.env.get_obs()]
-            }
+            pre_transition_data = self.env.get_pretransition_data()
 
             #Add info to replay buffer that is available BEFORE the transition
             self.batch.update(pre_transition_data, ts=self.t)
@@ -95,11 +96,7 @@ class EpisodeRunner:
             self.t += 1
         print(f"Time to run env and choose actions: {time.time() - st}")
 
-        last_data = {
-            "state": [self.env.get_state()],
-            "avail_actions": [self.env.get_avail_actions()],
-            "obs": [self.env.get_obs()]
-        }
+        last_data = self.env.get_pretransition_data()
         if test_mode and self.args.render:
             print(f"Episode return: {episode_return}")
         self.batch.update(last_data, ts=self.t)

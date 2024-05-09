@@ -4,6 +4,7 @@ from components.episode_buffer import EpisodeBatch
 from multiprocessing import Pipe, Process
 import numpy as np
 import torch as th
+from collections import defaultdict
 
 import time
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
@@ -29,9 +30,7 @@ class ParallelRunner:
             p.daemon = True
             p.start()
 
-        self.parent_conns[0].send(("get_env_info", None))
-        self.env_info = self.parent_conns[0].recv()
-        self.T = self.env_info["T"]
+        self.T = self.args.env_args["T"]
 
         self.t = 0
 
@@ -53,15 +52,37 @@ class ParallelRunner:
                                     preprocess=preprocess, device=self.args.device)
         self.mac = mac
         
-        #TODO: add copy of the environment to the action selector
+        # self.update_action_selector_envs()
+        for parent_conn in self.parent_conns:
+            parent_conn.send(("get_env", None))
+        envs = [parent_conn.recv() for parent_conn in self.parent_conns]
+        self.mac.action_selector.envs = envs
+        self.mac.jumpstart_action_selector.envs = envs
 
         self.scheme = scheme
         self.groups = groups
         self.preprocess = preprocess
+    
+    def get_env(self):
+        """
+        Return the first environment in the batch, likely to be used as
+        a reference for the action selector.
+        """
+        self.parent_conns[0].send(("get_env", None))
+        return self.parent_conns[0].recv()
+    
+    def update_action_selector_envs(self):
+        """
+        Return all environments in the batch, and add them to the action selectors.
 
-    def get_env_info(self):
-        return self.env_info
-
+        TOO SLOW.
+        """
+        for parent_conn in self.parent_conns:
+            parent_conn.send(("get_env", None))
+        envs = [parent_conn.recv() for parent_conn in self.parent_conns]
+        self.mac.action_selector.envs = envs
+        self.mac.jumpstart_action_selector.envs = envs
+    
     def save_replay(self):
         self.parent_conns[0].send(("save_replay", None))
 
@@ -76,17 +97,12 @@ class ParallelRunner:
         for parent_conn in self.parent_conns:
             parent_conn.send(("reset", None))
 
-        pre_transition_data = {
-            "state": [],
-            "avail_actions": [],
-            "obs": []
-        }
+        pre_transition_data = defaultdict(list)
         # Get the obs, state and avail_actions back
         for parent_conn in self.parent_conns:
             data = parent_conn.recv()
-            pre_transition_data["state"].append(data["state"])
-            pre_transition_data["avail_actions"].append(data["avail_actions"])
-            pre_transition_data["obs"].append(data["obs"])
+            for k, v in data.items():
+                pre_transition_data[k].extend(v)
 
         self.batch.update(pre_transition_data, ts=0)
 
@@ -108,6 +124,7 @@ class ParallelRunner:
         final_env_infos = []  # may store extra stats like battle won. this is filled in ORDER OF TERMINATION
 
         while True:
+            # self.update_action_selector_envs() #TOO SLOW
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
             actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated, test_mode=test_mode)
@@ -141,39 +158,36 @@ class ParallelRunner:
                 "terminated": []
             }
             # Data for the next step we will insert in order to select an action
-            pre_transition_data = {
-                "state": [],
-                "avail_actions": [],
-                "obs": []
-            }
+            pre_transition_data = defaultdict(list)
 
             # Receive data back for each unterminated env
             for idx, parent_conn in enumerate(self.parent_conns):
                 if not terminated[idx]:
                     data = parent_conn.recv()
+                    worker_post_transition_data = data[0]
+                    worker_pre_transition_data = data[1]
                     # Remaining data for this current timestep
-                    post_transition_data["rewards"].append((data["rewards"],))
+                    post_transition_data["rewards"].append((worker_post_transition_data["rewards"],))
 
                     if getattr(self.args, "cooperative_rewards", False):
-                        episode_returns[idx] += data["rewards"]
+                        episode_returns[idx] += worker_post_transition_data["rewards"]
                     else:
-                        episode_returns[idx] += sum(data["rewards"])
+                        episode_returns[idx] += sum(worker_post_transition_data["rewards"])
                     episode_lengths[idx] += 1
                     if not test_mode:
                         self.env_steps_this_run += 1
 
                     env_terminated = False
-                    if data["terminated"]:
-                        final_env_infos.append(data["info"])
-                    if data["terminated"] and not data["info"].get("T", False):
+                    if post_transition_data["terminated"]:
+                        final_env_infos.append(worker_post_transition_data["info"])
+                    if post_transition_data["terminated"] and not worker_post_transition_data["info"].get("T", False):
                         env_terminated = True
-                    terminated[idx] = data["terminated"]
+                    terminated[idx] = worker_post_transition_data["terminated"]
                     post_transition_data["terminated"].append((env_terminated,))
 
                     # Data for the next timestep needed to select an action
-                    pre_transition_data["state"].append(data["state"])
-                    pre_transition_data["avail_actions"].append(data["avail_actions"])
-                    pre_transition_data["obs"].append(data["obs"])
+                    for k, v in worker_pre_transition_data.items():
+                        pre_transition_data[k].extend(v)
 
             # Add post_transiton data into the batch
             self.batch.update(post_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=False)
@@ -239,41 +253,35 @@ def env_worker(remote, env_fn):
             # Take a step in the environment
             rewards, terminated, env_info = env.step(actions)
             # Return the observations, avail_actions and state to make the next action
-            state = env.get_state()
-            avail_actions = env.get_avail_actions()
-            obs = env.get_obs()
-            remote.send({
-                # Data for the next timestep needed to pick an action
-                "state": state,
-                "avail_actions": avail_actions,
-                "obs": obs,
+            
+            post_transition_data = {
                 # Rest of the data for the current timestep
                 "rewards": rewards,
                 "terminated": terminated,
                 "info": env_info
-            })
+            }
+
+            pretransition_data = env.get_pretransition_data()
+
+            remote.send([post_transition_data, pretransition_data])
         elif cmd == "reset":
             env.reset()
-            remote.send({
-                "state": env.get_state(),
-                "avail_actions": env.get_avail_actions(),
-                "obs": env.get_obs()
-            })
+            pretransition_data = env.get_pretransition_data()
+            remote.send(pretransition_data)
         elif cmd == "close":
             env.close()
             remote.close()
             break
-        elif cmd == "get_env_info":
-            remote.send(env.get_env_info())
         elif cmd == "get_stats":
             remote.send(env.get_stats())
         elif cmd == "render":
             env.render()
         elif cmd == "save_replay":
             env.save_replay()
+        elif cmd == "get_env":
+            remote.send(env)
         else:
             raise NotImplementedError
-        #TODO: implement function to get back all the environment objects.
 
 
 class CloudpickleWrapper():
