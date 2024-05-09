@@ -5,6 +5,7 @@ from envs.benefit_obs_env import BenefitObsEnv
 from envs.mock_constellation_env import MockConstellationEnv
 from envs.power_constellation_env import PowerConstellationEnv
 from envs.real_constellation_env import RealConstellationEnv
+from envs.real_power_constellation_env import RealPowerConstellationEnv
 import sys
 import os
 import gym
@@ -24,6 +25,7 @@ REGISTRY["benefit_obs_env"] = partial(env_fn, env=BenefitObsEnv)
 REGISTRY["mock_constellation_env"] = partial(env_fn, env=MockConstellationEnv)
 REGISTRY["power_constellation_env"] = partial(env_fn, env=PowerConstellationEnv)
 REGISTRY["real_constellation_env"] = partial(env_fn, env=RealConstellationEnv)
+REGISTRY["real_power_constellation_env"] = partial(env_fn, env=RealPowerConstellationEnv)
 
 if sys.platform == "linux":
     os.environ.setdefault(

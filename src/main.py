@@ -141,10 +141,10 @@ def experiment_run(params, explicit_dict_items=None, verbose=True):
 
     # Save to disk by default for sacred
     logger.info("Saving to FileStorageObserver in results/sacred.")
-    file_obs_path = os.path.join(results_path, f"sacred/{config_dict['name']}")
+    # file_obs_path = os.path.join(results_path, f"sacred/{config_dict['name']}")
 
     # ex.observers.append(MongoObserver(db_name="marlbench")) #url='172.31.5.187:27017'))
-    ex.observers.append(FileStorageObserver.create(file_obs_path))
+    # ex.observers.append(FileStorageObserver.create(file_obs_path))
     # ex.observers.append(MongoObserver())
 
     for exp_num in range(num_repeats):

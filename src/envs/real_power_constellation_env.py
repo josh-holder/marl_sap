@@ -7,14 +7,14 @@ import gym
 from gym.utils import seeding
 import numpy as np
 import scipy.optimize
-import torch as th
 from components.transforms import OneHot
+import torch as th
 
 from .HighPerformanceConstellationSim import HighPerformanceConstellationSim
 
 import time
 
-class RealConstellationEnv(Env):
+class RealPowerConstellationEnv(Env):
     def __init__(self,
                  num_planes, num_sats_per_plane, m,
                  T, N, M, L, 
@@ -42,6 +42,7 @@ class RealConstellationEnv(Env):
 
         self.beta = None
         self.prev_assigns = None
+        self.power_states = np.ones(self.n)
 
         #~~~~~~~~~~~~~~~~~~~~~ CONSTELLATION SETUP ~~~~~~~~~~~~~~~~~~~~~
         if sat_prox_mat is None or graphs is None:
@@ -104,6 +105,7 @@ class RealConstellationEnv(Env):
             "terminated": {"vshape": (1,), "dtype": th.bool},
             "prev_assigns": {"vshape": (self.n,), "dtype": th.int16, "part_of_state": True},
             "beta": {"vshape": (self.n, self.m, self.L), "dtype": th.float16, "part_of_state": True},
+            "power_states": {"vshape": (self.n,), "dtype": th.float16, "part_of_state": True},
         }
         preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=self.m)])}
 
@@ -126,6 +128,7 @@ class RealConstellationEnv(Env):
 
         self.beta = self.sat_prox_mat[:,:,self.k:self.k+self.L] * self.task_prios
         self.prev_assigns = np.random.choice(self.m, self.n, replace=False)
+        self.power_states = np.ones(self.n) #reset to full power
 
         self._obs = self._build_obs()
 
@@ -147,20 +150,34 @@ class RealConstellationEnv(Env):
 
         #Compute the state dependent benefit matrix.
         #(This will only ever be a single batch, so we can should squeeze the batch dimension.)
-        beta_hat = self.beta_hat(self.beta, self.prev_assigns)
+        beta_hat = self.beta_hat(self.beta, self.prev_assigns, self.power_states)
 
         #Update the rewards and chosen assign matrix
         rewards = []
         for i in range(self.n):
-            chosen_task = assignments[i]
-            if beta_hat[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
-                rewards.append(beta_hat[i, chosen_task, 0] / num_times_tasks_completed[chosen_task])
+            if self.power_states[i] > 0:
+                chosen_task = assignments[i]
+                if beta_hat[i, chosen_task, 0] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
+                    rewards.append(beta_hat[i, chosen_task, 0] / num_times_tasks_completed[chosen_task])
+                else:
+                    rewards.append(beta_hat[i, chosen_task, 0])
             else:
-                rewards.append(beta_hat[i, chosen_task, 0])
+                rewards.append(0)
 
         self.k += 1
             
         self.done = self.k >= self.T
+
+        #Update agent power states
+        for i in range(self.n):
+            if self.power_states[i] > 0:
+                chosen_task = assignments[i]
+                if self.beta[i,chosen_task,0] > 1e-12:
+                    self.power_states[i] -= 0.2
+                else:
+                    self.power_states[i] = min(self.power_states[i] + 0.1, 1)
+            else:
+                pass #do nothing if the agent is already dead
 
         #Build observation and state for the next step
         effective_L = min(self.L, self.T - self.k)
@@ -220,8 +237,14 @@ class RealConstellationEnv(Env):
                 # ~~~ Get agent previous assigns ~~~
                 agent_assigns_obs = np.where(top_agent_tasks == self.prev_assigns[i], 1, 0)
 
+                # ~~~ Get N power states ~~~
+                agent_power_state_obs = np.zeros(self.N+1)
+                agent_power_state_obs[0] = self.power_states[i]
+                agent_power_state_obs[1:] = self.power_states[top_n]
+
                 #flatten local_benefits, neighboring_benefits, and neighboring_other_benefits
-                observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), agent_assigns_obs)))
+                observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), 
+                                                    agent_assigns_obs, agent_power_state_obs)))
         else: #otherwise, if done there are no benefits to observe. (and no actions either, because we can't do filtering based on them.)
             self.beta = np.zeros((self.n, self.m, self.L))
             observations = [np.zeros(self.get_obs_size())] * self.n
@@ -239,6 +262,7 @@ class RealConstellationEnv(Env):
             "obs": [self._obs],
             "prev_assigns": [self.prev_assigns],
             "avail_actions": [self.get_avail_actions()],
+            "power_states": [self.power_states],
         }
         return pretransition_data
 
@@ -261,7 +285,9 @@ class RealConstellationEnv(Env):
 
     def get_obs_size(self):
         """ Returns the shape of the observation """
-        return self.M*self.L + self.N*self.M*self.L + self.N*self.M//2*self.L + self.M + 0 #for now, we have no extra state information
+        #Local benefits, neighboring benefits, and neighboring other benefits
+        #also previous actions, and power states of nearest N agents (plus itself)
+        return self.M*self.L + self.N*self.M*self.L + self.N*self.M//2*self.L + self.M + (self.N+1)
 
     def get_avail_actions(self):
         """ All actions are available."""
@@ -278,7 +304,7 @@ class RealConstellationEnv(Env):
     def get_stats(self):
         return {}
 
-    def beta_hat(self, beta, prev_assigns):
+    def beta_hat(self, beta, prev_assigns, power_states):
         """
         Given the info contained in the state, 
         returns a matrix of benefits for each agent-task pair.
@@ -288,16 +314,13 @@ class RealConstellationEnv(Env):
         #if beta or prev_assigns is a tensor, convert to numpy
         if isinstance(beta, th.Tensor): beta = beta.numpy()
         if isinstance(prev_assigns, th.Tensor): prev_assigns = prev_assigns.numpy()
-        #add two dimensions (batch and time) to the beta and prev_assigns if they are not already there
+        if isinstance(power_states, th.Tensor): power_states = power_states.numpy()
         beta_init_dim = beta.ndim
         if beta_init_dim == 3:
-            # beta = np.expand_dims(beta, axis=0)
             beta = np.expand_dims(beta, axis=0)
         prev_assigns_init_dim = prev_assigns.ndim
         if prev_assigns_init_dim == 1: 
-            # prev_assigns = np.expand_dims(prev_assigns, axis=0)
             prev_assigns = np.expand_dims(prev_assigns, axis=0)
-        # batch_dim = beta.shape[0]
         time_dim = beta.shape[0]
 
         prev_assign_mat = np.zeros((time_dim, self.n, self.m))
@@ -321,6 +344,12 @@ class RealConstellationEnv(Env):
         #~~~~~~~~~~~~~~~~~~~~~~~~~~ APPLY HANDOVER PENALTY ~~~~~~~~~~~~~~~~~~~~~~~~~~~
         beta_hat = beta.copy()
         beta_hat[:,:,:,0] = beta_hat[:,:,:,0]-self.lambda_*penalty_locations
+
+        #~~~~~~~~~~~~~~~~~~~ ZERO BETA_HAT FOR OUT OF POWER SATS ~~~~~~~~~~~~~~~~~~~~~
+        sats_out_of_power = power_states < 1e-12
+        sats_out_of_power = np.reshape(sats_out_of_power, (time_dim, self.n, 1, 1))
+        sats_out_of_power = np.tile(sats_out_of_power, (1, 1, self.m, self.L))
+        beta_hat = np.where(sats_out_of_power, 0, beta_hat)
 
         if beta_init_dim == 3: beta_hat = np.squeeze(beta_hat, axis=0)
         if prev_assigns_init_dim == 1: prev_assigns = np.squeeze(prev_assigns, axis=0)

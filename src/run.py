@@ -54,8 +54,8 @@ def run(_run, _config, _log):
         if args.wandb_run_name == None: args.wandb_run_name = unique_token
         logger.setup_wandb(args)
 
-    # sacred is on by default
-    logger.setup_sacred(_run)
+    # sacred is off by default
+    # logger.setup_sacred(_run)
 
     # Run and train
     if args.evaluate:
@@ -189,13 +189,13 @@ def run_sequential(args, logger):
         learner.load_models(model_path)
         runner.t_env = timestep_to_load
 
-        if args.evaluate or args.save_replay:
-            runner.log_train_stats_t = runner.t_env
-            actions, reward = evaluate_sequential(args, runner)
-            logger.log_stat("episode", runner.t_env, runner.t_env)
-            logger.print_recent_stats()
-            logger.console_logger.info("Finished Evaluation")
-            return actions, reward
+    if args.evaluate or args.save_replay:
+        runner.log_train_stats_t = runner.t_env
+        actions, reward = evaluate_sequential(args, runner)
+        logger.log_stat("episode", runner.t_env, runner.t_env)
+        logger.print_recent_stats()
+        logger.console_logger.info("Finished Evaluation")
+        return actions, reward
 
     #Train on the offline dataset.
     if use_offline_dataset:
