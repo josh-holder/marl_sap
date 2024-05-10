@@ -12,7 +12,7 @@ class MultinomialActionSelector():
         self.epsilon = self.schedule.eval(0)
         self.test_greedy = getattr(args, "test_greedy", True)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, beta=None):
         masked_policies = agent_inputs.clone()
         masked_policies[avail_actions == 0.0] = 0.0
 
@@ -34,7 +34,7 @@ class EpsilonGreedyActionSelector():
                                               decay="linear")
         self.epsilon = self.schedule.eval(0)
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, beta=None):
         # Assuming agent_inputs is a batch of Q-Values for each agent bav
         self.epsilon = self.schedule.eval(t_env)
 
@@ -58,7 +58,7 @@ class SoftPoliciesSelector():
     def __init__(self, args):
         self.args = args
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, state=None):
+    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False, beta=None):
         m = Categorical(agent_inputs)
         picked_actions = m.sample().long()
         return picked_actions

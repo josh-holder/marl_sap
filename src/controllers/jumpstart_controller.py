@@ -59,10 +59,10 @@ class JumpstartMAC:
                 reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n, -1)
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             
-            if self.args.use_mps_action_selection:
-                agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
-            else: #otherwise, take softmax such that it remains on cpu
-                agent_outs = softmax(agent_outs, dim=-1)
+            # if self.args.use_mps_action_selection:
+            agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
+            # else: #otherwise, take softmax such that it remains on cpu
+            #     agent_outs = softmax(agent_outs, dim=-1)
 
         return agent_outs.view(ep_batch.batch_size, self.n, -1)
 

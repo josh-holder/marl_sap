@@ -20,7 +20,7 @@ class BasicMAC:
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
         agent_outputs = self.forward(ep_batch, t_ep, test_mode=test_mode, action_selection_mode=True)
-        chosem = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode, state=ep_batch["state"][:, t_ep])
+        chosem = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env, test_mode=test_mode, beta=ep_batch["beta"][bs, t_ep])
         return chosem
 
     def forward(self, ep_batch, t, test_mode=False, action_selection_mode=False):
@@ -39,10 +39,10 @@ class BasicMAC:
                 reshaped_avail_actions = avail_actions.reshape(ep_batch.batch_size * self.n, -1)
                 agent_outs[reshaped_avail_actions == 0] = -1e10
             
-            if self.args.use_mps_action_selection:
-                agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
-            else: #otherwise, take softmax such that it remains on cpu
-                agent_outs = softmax(agent_outs, dim=-1)
+            # if self.args.use_mps_action_selection:
+            agent_outs = th.nn.functional.softmax(agent_outs, dim=-1)
+            # else: #otherwise, take softmax such that it remains on cpu
+            #     agent_outs = softmax(agent_outs, dim=-1)
 
         return agent_outs.view(ep_batch.batch_size, self.n, -1)
 

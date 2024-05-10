@@ -57,7 +57,8 @@ class ParallelRunner:
             parent_conn.send(("get_env", None))
         envs = [parent_conn.recv() for parent_conn in self.parent_conns]
         self.mac.action_selector.envs = envs
-        self.mac.jumpstart_action_selector.envs = envs
+        if self.args.mac == "jumpstart_mac":
+            self.mac.jumpstart_action_selector.envs = envs
 
         self.scheme = scheme
         self.groups = groups

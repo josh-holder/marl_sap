@@ -47,8 +47,8 @@ class PPOLearner:
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
 
-        rewards = batch["rewards"][:, :-1]
-        actions = batch["actions"][:, :]
+        rewards = batch["rewards"][:, :-1].float()
+        actions = batch["actions"][:, :].to(th.int64)
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
@@ -195,6 +195,12 @@ class PPOLearner:
     def _update_targets_soft(self, tau):
         for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
             target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+    def mps(self):
+        self.old_mac.agent.to("mps")
+        self.mac.agent.to("mps")
+        self.critic.to("mps")
+        self.target_critic.to("mps")
 
     def cuda(self):
         self.old_mac.cuda()

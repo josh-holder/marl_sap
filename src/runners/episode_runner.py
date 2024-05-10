@@ -37,7 +37,8 @@ class EpisodeRunner:
 
         #Add environment to action selector (add in a list to be consistent w parallel)
         self.mac.action_selector.envs = [self.env]
-        self.mac.jumpstart_action_selector.envs = [self.env]
+        if self.args.mac == "jumpstart_mac":
+            self.mac.jumpstart_action_selector.envs = [self.env]
 
     def get_env_info(self):
         return self.env.get_env_info()
