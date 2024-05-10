@@ -14,7 +14,7 @@ from poliastro.spheroid_location import SpheroidLocation
 from poliastro.core.events import line_of_sight
 
 class HighPerformanceConstellationSim(object):
-    def __init__(self, num_planes, num_sats_per_plane, T=None, dt=1*u.min, inc=58, altitude=550, isl_dist=np.inf, dtype=np.float64) -> None:
+    def __init__(self, num_planes, num_sats_per_plane, T=None, dt=63.76469*u.second, inc=58, altitude=550, isl_dist=np.inf, dtype=np.float64) -> None:
         self.inc = inc*u.deg
         self.altitude = altitude*u.km
         self.isl_dist = isl_dist
@@ -30,6 +30,10 @@ class HighPerformanceConstellationSim(object):
         #If T > period, we can skip planes if the first sat can't see a task. 
         #If T < period, but can't currently skip planes (but can implement something more clever later if needed)
         self.skip_planes = False 
+
+        #If timestep is 63.79 seconds and altitude is 550 km, then it's 4deg per timestep,
+        #and we can reuse the satellite proximities in the plane because they're just offset by 360/num_sats_per_plane/4 time steps.
+        self.timestep_offset = None
 
         self.sat_rs_over_time = None
         self.graphs = None
@@ -52,7 +56,7 @@ class HighPerformanceConstellationSim(object):
         for sat in self.sats:
             sat.orbit = deepcopy(sat.init_orbit)
     
-    def propagate_orbits_and_generate_graphs(self,T, dt=1*u.min):
+    def propagate_orbits_and_generate_graphs(self,T, dt=63.76469*u.second):
         """
         Propagate the orbits of all satellites forward in time by T timesteps,
         storing satellite orbits positions over time in a (n x 3 x T) array.
@@ -71,6 +75,10 @@ class HighPerformanceConstellationSim(object):
 
         if T > sat.orbit.period.to_value(u.min)/dt.to_value(u.min):
             self.skip_planes = True
+
+        if dt == 63.76469*u.second and self.altitude == 550*u.km and (360/self.num_sats_per_plane)%4 == 0:
+            self.timestep_offset = -int(360/self.num_sats_per_plane/4)
+            print(self.timestep_offset)
 
         return self.graphs
         
@@ -92,22 +100,23 @@ class HighPerformanceConstellationSim(object):
             lat = np.random.uniform(-max_lat, max_lat)
             task_loc = SpheroidLocation(lat*u.deg, lon*u.deg, 0*u.m, Earth).cartesian_cords.to_value(u.km)
 
-            i = 0
-            while i < self.n:
+            # if self.skip_planes:
+            for plane in range(self.num_planes):
+                i = plane*self.num_sats_per_plane
                 for k in range(T):
                     sat_r = self.sat_rs_over_time[i, :, k]
                     sat_prox_mat[i, j, k] = calc_fov_based_proximities_fast(sat_r, task_loc, fov, gaussian_sigma_2)
                 
-                #If the first satellite in the plane couldn't see the task over the entire orbit,
-                #then none of the satellites in the plane can see the task, so skip to the next plane.
-                #TECHNICALLY, this could miss something due to discretization, but it's a good enough heuristic for now.
-                if self.skip_planes:
-                    if i % self.num_sats_per_plane == 0:
-                        if np.max(sat_prox_mat[i, j, :]) == 0:
-                            i += self.num_sats_per_plane
-                            continue
-                
-                i += 1
+                if np.max(sat_prox_mat[i, j, :]) == 0 and self.skip_planes:
+                    continue
+
+                for other_sat_i in range(1, self.num_sats_per_plane):
+                    if self.timestep_offset is not None:
+                        sat_prox_mat[i+other_sat_i, j, :] = np.roll(sat_prox_mat[i, j, :], self.timestep_offset*other_sat_i)
+                    else:
+                        for k in range(T):
+                            sat_r = self.sat_rs_over_time[i+other_sat_i, :, k]
+                            sat_prox_mat[i+other_sat_i, j, k] = calc_fov_based_proximities_fast(sat_r, task_loc, fov, gaussian_sigma_2)
         
         return sat_prox_mat
 

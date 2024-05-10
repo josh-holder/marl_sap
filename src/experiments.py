@@ -1,3 +1,4 @@
+from astropy import units as u
 from main import experiment_run
 from copy import deepcopy
 import numpy as np
@@ -486,5 +487,42 @@ def haal_test():
     haal_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in haal_actions]
     print('HAAL:', haal_val)
 
+def const_sim_speed_test():
+    num_planes = 10
+    num_sats_per_plane = 10
+    n = num_planes * num_sats_per_plane
+    m = 150
+    T = 90
+    L = 3
+    lambda_ = 0.5
+
+    N = 10
+    M = 10
+
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T, dt=63.76469*u.second)
+    ts = time.time()
+    sat_prox_mat = const.get_proximities_for_random_tasks(m, seed=42)
+    print('Time to generate proximities, new strat:', time.time() - ts)
+
+    ts = time.time()
+    const.timestep_offset = None
+    sat_prox_mat_old = const.get_proximities_for_random_tasks(m, seed=42)
+    print('Time to generate proximities, old strat:', time.time() - ts)
+
+    total_diff = 0
+    num_nonzero = 0
+    for i in range(n):
+        for j in range(n):
+            for k in range(T):
+                total_diff += abs(sat_prox_mat[i,j,k] - sat_prox_mat_old[i,j,k])
+                if sat_prox_mat[i,j,k] != 0 or sat_prox_mat_old[i,j,k] != 0:
+                    num_nonzero += 1
+    print("Avg diff", total_diff / num_nonzero)
+    print("max diff", np.max(np.abs(sat_prox_mat - sat_prox_mat_old)))
+
+    #ensure that matrices are the same
+    assert np.allclose(sat_prox_mat_old, sat_prox_mat)
+
+
 if __name__ == "__main__":
-    real_power_constellation_test()
+    const_sim_speed_test()
