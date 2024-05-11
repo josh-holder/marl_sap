@@ -26,11 +26,13 @@ runner: "episode"
 
 buffer_size: 1000
 
+use_mps: True
+
 # update the target network every {} episodes
 target_update_interval_or_tau: 0.01
 
 # --- Agent parameters ---
-agent: "custom_cnn_const_agent" # Default constellation agent (multi-component benefit observation)
+agent: "flat_const_agent" # Default constellation agent (multi-component benefit observation)
 num_filters: 5 # Number of filters
 hidden_dim: 64 # Size of hidden state for default rnn agent
 obs_agent_id: False
@@ -48,4 +50,4 @@ use_rnn: False
 mixer:
 
 
-name: "iql_sap"
+name: "filtered_reda"

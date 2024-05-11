@@ -360,7 +360,7 @@ def real_power_constellation_test():
 
     basic_params = [
         'src/main.py',
-        '--config=iql_sap_custom_cnn',
+        '--config=iql_sap',
         '--env-config=real_power_constellation_env',
         'with',
         'test_nepisode=1',
@@ -377,7 +377,7 @@ def real_power_constellation_test():
     #~~~~~~~~~ EVALUATE IQL SAP ~~~~~~~~~~
     iql_sap_params = copy.copy(basic_params)
 
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_real_power_continue'
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/flat_iql_real_power'
     iql_sap_params.append(f'checkpoint_path={iql_sap_model_path}')
 
     iql_sap_exp = experiment_run(iql_sap_params, explicit_dict_items, verbose=False)
@@ -408,7 +408,6 @@ def real_power_constellation_test():
         'env_args': {'sat_prox_mat': sat_prox_mat,
                      'graphs': const.graphs,
                      'T': T,
-                     'L': 1,
                      }
     }
 
@@ -523,6 +522,85 @@ def const_sim_speed_test():
     #ensure that matrices are the same
     assert np.allclose(sat_prox_mat_old, sat_prox_mat)
 
+def large_real_power_test():
+    num_planes = 18
+    num_sats_per_plane = 18
+    n = num_planes * num_sats_per_plane
+    m = 450
+    T = 100
+    L = 3
+    lambda_ = 0.5
+
+    N = 10
+    M = 10
+
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
+    sat_prox_mat = const.get_proximities_for_random_tasks(m)
+
+    basic_params = [
+        'src/main.py',
+        '--config=iql_sap_custom_cnn',
+        '--env-config=real_power_constellation_env',
+        'with',
+        'test_nepisode=1',
+        'evaluate=True',
+        'use_offline_dataset=False',
+        ]
+    explicit_dict_items = {
+        'env_args': {'sat_prox_mat': sat_prox_mat,
+                     'graphs': const.graphs,
+                     'T': T,
+                     }
+    }
+
+    #~~~~~~~~~ EVALUATE IQL SAP ~~~~~~~~~~
+    print("EVALUATING IQL SAP")
+    iql_sap_params = copy.copy(basic_params)
+
+    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/filtered_iql_sap_seed851621042_2024-05-09 23:31:38.761448'
+    iql_sap_params.append(f'checkpoint_path={iql_sap_model_path}')
+
+    iql_sap_exp = experiment_run(iql_sap_params, explicit_dict_items, verbose=False)
+    iql_sap_val = float(iql_sap_exp.result[1])
+    iql_sap_actions = iql_sap_exp.result[0]
+    iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
+
+    #~~~~~~~~~ EVALUATE HAA ~~~~~~~~~~
+    print("EVALUATING HAA")
+    haa_params = copy.copy(basic_params)
+
+    # haa_params.append(f'checkpoint_path={iql_sap_model_path}')
+    haa_params.append('jumpstart_evaluation_epsilon=1')
+    haa_params.append('jumpstart_action_selector=\"haa_selector\"')
+
+    haa_exp = experiment_run(haa_params, explicit_dict_items, verbose=True)
+    haa_val = float(haa_exp.result[1])
+    haa_actions = haa_exp.result[0]
+    haa_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in haa_actions]
+
+    #~~~~~~~~~ EVALUATE HAAL ~~~~~~~~~~
+    print("EVALUATING HAAL")
+    haal_params = copy.copy(basic_params)
+    haal_params.append('jumpstart_evaluation_epsilon=1')
+    haal_params.append('jumpstart_action_selector=\"haal_selector\"')
+
+    explicit_dict_items = {
+        'env_args': {'sat_prox_mat': sat_prox_mat,
+                     'graphs': const.graphs,
+                     'T': T,
+                     'L': 1,
+                     }
+    }
+
+    haal_exp = experiment_run(haal_params, explicit_dict_items, verbose=True)
+    haal_val = float(haal_exp.result[1])
+    haal_actions = haal_exp.result[0]
+    haal_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in haal_actions]
+    
+
+    print('IQL SAP:', iql_sap_val)
+    print('HAA:', haa_val)
+    print('HAAL:', haal_val)
 
 if __name__ == "__main__":
-    const_sim_speed_test()
+    real_power_constellation_test()

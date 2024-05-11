@@ -78,7 +78,6 @@ class HighPerformanceConstellationSim(object):
 
         if dt == 63.76469*u.second and self.altitude == 550*u.km and (360/self.num_sats_per_plane)%4 == 0:
             self.timestep_offset = -int(360/self.num_sats_per_plane/4)
-            print(self.timestep_offset)
 
         return self.graphs
         
