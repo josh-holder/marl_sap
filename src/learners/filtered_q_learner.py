@@ -115,7 +115,7 @@ class FilteredQLearner:
         # Max over target Q-Values
         if self.args.double_q:
             # Get actions that maximise live Q (for double q-learning)
-            q_values_out_detach = q_values_out.clone().detach().cpu()
+            q_values_out_detach = q_values_out.clone().detach()
             q_values_out_detach[avail_actions == 0] = -9999999
 
             cur_max_actions = q_values_out_detach[:, 1:].max(dim=3, keepdim=True)[1]
