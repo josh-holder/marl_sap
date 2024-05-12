@@ -20,6 +20,8 @@ buffer_size: 1000
 
 use_mps: True
 
+t_max: 500000
+
 # update the target network every {} episodes
 target_update_interval_or_tau: 0.01
 

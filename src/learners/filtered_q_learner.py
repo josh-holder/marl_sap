@@ -45,10 +45,11 @@ class FilteredQLearner:
             
         self.n = args.n
 
+        reward_shape = self.n if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(1,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
@@ -162,6 +163,9 @@ class FilteredQLearner:
         elif self.args.target_update_interval_or_tau <= 1.0:
             self._update_targets_soft(self.args.target_update_interval_or_tau)
 
+        if self.args.use_mps and not self.args.use_mps_action_selection:
+            self.mac.update_action_selector_agent()
+
         if t_env - self.log_stats_t >= self.args.learner_log_interval:
             self.logger.log_stat("loss", loss.item(), t_env)
             self.logger.log_stat("grad_norm", grad_norm.item(), t_env)
@@ -204,6 +208,7 @@ class FilteredQLearner:
         th.save(self.optimiser.state_dict(), "{}/opt.th".format(path))
 
     def load_models(self, path):
+        print("LOADING FROM: ", path)
         self.mac.load_models(path)
         # Not quite right but I don't want to save target networks
         self.target_mac.load_models(path)
