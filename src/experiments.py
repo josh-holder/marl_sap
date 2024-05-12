@@ -18,10 +18,72 @@ from algorithms.solve_w_haal import solve_w_haal
 from algorithms.solve_randomly import solve_randomly
 from algorithms.solve_greedily import solve_greedily
 from algorithms.solve_wout_handover import solve_wout_handover
+from haal_experiments.simple_assign_env import SimpleAssignEnv
 from common.methods import *
 
 from envs.HighPerformanceConstellationSim import HighPerformanceConstellationSim
 from constellation_sim.constellation_generators import get_prox_mat_and_graphs_random_tasks
+
+def test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items=None, verbose=False):
+    vdn_model_path = '/Users/joshholder/code/marl_sap/results/models/vdn_mock_const'
+    params = [
+        'src/main.py',
+        f'--config={alg_str}',
+        f'--env-config={env_str}',
+        'with',
+        f'checkpoint_path={load_path}',
+        'test_nepisode=1',
+        'evaluate=True',
+        'use_offline_dataset=False',
+        ]
+    if explicit_dict_items is None:
+        explicit_dict_items = {
+            'env_args': {'sat_prox_mat': sat_prox_mat,
+                         "graphs": [1]} #placeholder
+        }
+    else:
+        explicit_dict_items['env_args']['sat_prox_mat'] = sat_prox_mat
+    
+    n = sat_prox_mat.shape[0]
+    m = sat_prox_mat.shape[1]
+
+    exp = experiment_run(params, explicit_dict_items, verbose=verbose)
+    val = float(exp.result[1])
+    actions = exp.result[0]
+    assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in actions]
+    
+    return assigns, val
+
+def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=None, verbose=False):
+    params = [
+        'src/main.py',
+        '--config=reda_sap',
+        f'--env-config={env_str}',
+        'with',
+        'test_nepisode=1',
+        'evaluate=True',
+        'use_offline_dataset=False',
+        'jumpstart_evaluation_epsilon=1',
+        f'jumpstart_action_selector=\"{alg_str}\"'
+        ]
+    if explicit_dict_items is None:
+        explicit_dict_items = {
+            'env_args': {'sat_prox_mat': sat_prox_mat,
+                        'graphs': [1], #placeholder
+                        }
+        }
+    else:
+        explicit_dict_items['env_args']['sat_prox_mat'] = sat_prox_mat
+
+    n = sat_prox_mat.shape[0]
+    m = sat_prox_mat.shape[1]
+
+    exp = experiment_run(params, explicit_dict_items, verbose=verbose)
+    val = float(exp.result[1])
+    actions = exp.result[0]
+    assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in actions]
+
+    return assigns, val
 
 def mock_constellation_test():
     n = 10
@@ -218,131 +280,6 @@ def neighborhood_benefits_test():
     
     vdn_exp = experiment_run(params, explicit_dict_items, verbose=True)
 
-def real_constellation_test():
-    num_planes = 10
-    num_sats_per_plane = 10
-    n = num_planes * num_sats_per_plane
-    m = 150
-    T = 100
-    L = 3
-    lambda_ = 0.5
-
-    N = 10
-    M = 10
-
-    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
-    sat_prox_mat = const.get_proximities_for_random_tasks(m)
-
-    env = RealConstellationEnv(num_planes, num_sats_per_plane, m, N, M, L, T, lambda_, sat_prox_mat=sat_prox_mat, graphs=const.graphs)
-    env.reset()
-
-    # #EVALUATE VDN
-    # print('Evaluating IQL SAP')
-    # iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_real_const_trained_on_nha'
-    # params = [
-    #     'src/main.py',
-    #     '--config=iql_sap_custom_cnn',
-    #     '--env-config=real_constellation_env',
-    #     'with',
-    #     f'checkpoint_path={iql_sap_model_path}',
-    #     'test_nepisode=1',
-    #     'evaluate=True',
-    #     'use_offline_dataset=False'
-    #     ]
-    # explicit_dict_items = {
-    #     'env_args': {'sat_prox_mat': sat_prox_mat,
-    #                  'T': T,
-    #                  }
-    # }
-    
-    # iql_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
-    # iql_sap_val = float(iql_sap_exp.result[1])
-    # iql_sap_actions = iql_sap_exp.result[0]
-    # iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
-    # print('Old IQL SAP:', iql_sap_val)
-
-    # env.reset()
-
-    #EVALUATE VDN
-    print('Evaluating IQL SAP')
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed938465122_2024-05-07 16:30:23.198948'
-    params = [
-        'src/main.py',
-        '--config=iql_sap_custom_cnn',
-        '--env-config=real_constellation_env',
-        'with',
-        f'checkpoint_path={iql_sap_model_path}',
-        'test_nepisode=1',
-        'evaluate=True',
-        'use_offline_dataset=False',
-        'load_step=-1'
-        ]
-    explicit_dict_items = {
-        'env_args': {'sat_prox_mat': sat_prox_mat,
-                     'T': T,
-                     }
-    }
-    
-    iql_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
-    iql_sap_val = float(iql_sap_exp.result[1])
-    iql_sap_actions = iql_sap_exp.result[0]
-    iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
-    print('Most Recent IQL SAP:', iql_sap_val)
-
-    env.reset()
-
-    # #EVALUATE VDN
-    # print('Evaluating IQL SAP')
-    # iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/iql_sap_seed938465122_2024-05-07 16:30:23.198948'
-    # params = [
-    #     'src/main.py',
-    #     '--config=iql_sap_custom_cnn',
-    #     '--env-config=real_constellation_env',
-    #     'with',
-    #     f'checkpoint_path={iql_sap_model_path}',
-    #     'test_nepisode=1',
-    #     'evaluate=True',
-    #     'load_step=-1'
-    #     'use_offline_dataset=False'
-    #     ]
-    # explicit_dict_items = {
-    #     'env_args': {'sat_prox_mat': sat_prox_mat,
-    #                  'T': T,
-    #                  }
-    # }
-    
-    # iql_sap_exp = experiment_run(params, explicit_dict_items, verbose=True)
-    # iql_sap_val = float(iql_sap_exp.result[1])
-    # iql_sap_actions = iql_sap_exp.result[0]
-    # iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
-    # print('Only pretrained IQL SAP:', iql_sap_val)
-
-    # env.reset()
-
-    haal3_assigns, haal3_val = solve_w_haal(env, L)
-    print(f'HAAL, L={L}:', haal3_val)
-
-    haal1_assigns, haal1_val = solve_w_haal(env, 1)
-    print(f'HAAL, L={1}:', haal1_val)
-
-    nha_assigns, nha_val = solve_wout_handover(env)
-    print('Without Handover:', nha_val)
-
-    greedy_assigns, greedy_val = solve_greedily(env)
-    print('Greedy:', greedy_val)
-
-    values = [iql_sap_val, haal3_val, haal1_val, greedy_val, nha_val]
-    handovers = [calc_handovers_generically(a) for a in [iql_sap_assigns, haal3_assigns, haal1_assigns, greedy_assigns, nha_assigns]]
-    
-    alg_names = ['IQL SAP', 'HAAL3', 'HAAL1', 'Greedy', 'Without\nHandover']
-    plt.bar(alg_names, values)
-    plt.ylabel('Value')
-    plt.show()
-
-    plt.bar(alg_names, handovers)
-    plt.ylabel('Handovers')
-    plt.show()
-
 def real_power_constellation_test():
     num_planes = 10
     num_sats_per_plane = 10
@@ -420,32 +357,6 @@ def real_power_constellation_test():
     print('IQL SAP:', iql_sap_val)
     print('HAA:', haa_val)
     print('HAAL:', haal_val)
-
-    # env.reset()
-
-    # haal3_assigns, haal3_val = solve_w_haal(env, L)
-    # print(f'HAAL, L={L}:', haal3_val)
-
-    # haal1_assigns, haal1_val = solve_w_haal(env, 1)
-    # print(f'HAAL, L={1}:', haal1_val)
-
-    # nha_assigns, nha_val = solve_wout_handover(env)
-    # print('Without Handover:', nha_val)
-
-    # greedy_assigns, greedy_val = solve_greedily(env)
-    # print('Greedy:', greedy_val)
-
-    # values = [iql_sap_val, haal3_val, haal1_val, greedy_val, nha_val]
-    # handovers = [calc_handovers_generically(a) for a in [iql_sap_assigns, haal3_assigns, haal1_assigns, greedy_assigns, nha_assigns]]
-    
-    # alg_names = ['IQL SAP', 'HAAL3', 'HAAL1', 'Greedy', 'Without\nHandover']
-    # plt.bar(alg_names, values)
-    # plt.ylabel('Value')
-    # plt.show()
-
-    # plt.bar(alg_names, handovers)
-    # plt.ylabel('Handovers')
-    # plt.show()
 
 def haal_test():
     num_planes = 10
@@ -537,70 +448,95 @@ def large_real_power_test():
     const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
     sat_prox_mat = const.get_proximities_for_random_tasks(m)
 
-    basic_params = [
-        'src/main.py',
-        '--config=iql_sap_custom_cnn',
-        '--env-config=real_power_constellation_env',
-        'with',
-        'test_nepisode=1',
-        'evaluate=True',
-        'use_offline_dataset=False',
-        ]
+    env_str = 'real_power_constellation_env'
     explicit_dict_items = {
         'env_args': {'sat_prox_mat': sat_prox_mat,
                      'graphs': const.graphs,
                      'T': T,
                      }
     }
-
-    #~~~~~~~~~ EVALUATE IQL SAP ~~~~~~~~~~
-    print("EVALUATING IQL SAP")
-    iql_sap_params = copy.copy(basic_params)
-
-    iql_sap_model_path = '/Users/joshholder/code/marl_sap/results/models/filtered_iql_sap_seed851621042_2024-05-09 23:31:38.761448'
-    iql_sap_params.append(f'checkpoint_path={iql_sap_model_path}')
-
-    iql_sap_exp = experiment_run(iql_sap_params, explicit_dict_items, verbose=False)
-    iql_sap_val = float(iql_sap_exp.result[1])
-    iql_sap_actions = iql_sap_exp.result[0]
-    iql_sap_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in iql_sap_actions]
+    # REDA SAP
+    print("EVALUATING REDA")
+    alg_str = 'reda_sap'
+    load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed966611133_2024-05-10 21:09:35.182580'
+    reda_assigns, reda_val = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items)
 
     #~~~~~~~~~ EVALUATE HAA ~~~~~~~~~~
     print("EVALUATING HAA")
-    haa_params = copy.copy(basic_params)
-
-    # haa_params.append(f'checkpoint_path={iql_sap_model_path}')
-    haa_params.append('jumpstart_evaluation_epsilon=1')
-    haa_params.append('jumpstart_action_selector=\"haa_selector\"')
-
-    haa_exp = experiment_run(haa_params, explicit_dict_items, verbose=True)
-    haa_val = float(haa_exp.result[1])
-    haa_actions = haa_exp.result[0]
-    haa_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in haa_actions]
+    alg_str = 'haa_selector'
+    haa_assigns, haa_val = test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items)
 
     #~~~~~~~~~ EVALUATE HAAL ~~~~~~~~~~
     print("EVALUATING HAAL")
-    haal_params = copy.copy(basic_params)
-    haal_params.append('jumpstart_evaluation_epsilon=1')
-    haal_params.append('jumpstart_action_selector=\"haal_selector\"')
+    alg_str = 'haal_selector'
+    haal_assigns, haal_val = test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items)
 
-    explicit_dict_items = {
+    #~~~~~~~~~ EVALUATE HAAL L=1 ~~~~~~~~~~
+    haal1_explicit_dict_items = {
         'env_args': {'sat_prox_mat': sat_prox_mat,
                      'graphs': const.graphs,
                      'T': T,
                      'L': 1,
                      }
     }
+    print("EVALUATING HAAL L=1")
+    haal1_assigns, haal1_val = test_classic_algorithms(alg_str, env_str, sat_prox_mat, haal1_explicit_dict_items)
 
-    haal_exp = experiment_run(haal_params, explicit_dict_items, verbose=True)
-    haal_val = float(haal_exp.result[1])
-    haal_actions = haal_exp.result[0]
-    haal_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in haal_actions]
-    
-
-    print('IQL SAP:', iql_sap_val)
+    print('REDA:', reda_val)
     print('HAA:', haa_val)
     print('HAAL:', haal_val)
+    print('HAAL L=1:', haal1_val)
+
+def large_real_test():
+    num_planes = 18
+    num_sats_per_plane = 18
+    n = num_planes * num_sats_per_plane
+    m = 450
+    T = 90
+    L = 3
+    lambda_ = 0.5
+
+    N = 10
+    M = 10
+
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
+    sat_prox_mat = const.get_proximities_for_random_tasks(m)
+
+    env = RealConstellationEnv(num_planes, num_sats_per_plane, m, N, M, L, T, lambda_, sat_prox_mat=sat_prox_mat, graphs=const.graphs)
+    env.reset()
+    
+    reda_assigns, reda_val = test_rl_model('reda_sap', 'real_constellation_env', '/Users/joshholder/code/marl_sap/results/models/large_real_no_power', sat_prox_mat)
+    print('REDA:', reda_val)
+
+    simple_env = SimpleAssignEnv(sat_prox_mat, None, lambda_)
+    simple_env.reset()
+    _, old_haal_val = solve_w_haal(simple_env, L, verbose=False)
+    print('Old HAAL:', old_haal_val)
+    
+    haal3_assigns, haal3_val = test_classic_algorithms('haal_selector', 'real_constellation_env', sat_prox_mat)
+    print(f'HAAL, L={L}:', haal3_val)
+
+    haal1_assigns, haal1_val = test_classic_algorithms('haal_selector', 'real_constellation_env', sat_prox_mat, {'env_args': {'L': 1}})
+    print(f'HAAL, L={1}:', haal1_val)
+
+    haa_assigns, haa_val = test_classic_algorithms('haa_selector', 'real_constellation_env', sat_prox_mat)
+    print('HAA:', haa_val)
+
+    simple_env.reset()
+    greedy_assigns, greedy_val = solve_greedily(simple_env)
+    print('Greedy:', greedy_val)
+
+    values = [haal3_val, haal1_val, greedy_val, haa_val]
+    handovers = [calc_handovers_generically(a) for a in [haal3_assigns, haal1_assigns, greedy_assigns, haa_assigns]]
+    
+    alg_names = ['HAAL3', 'HAAL1', 'Greedy', 'HAA']
+    plt.bar(alg_names, values)
+    plt.ylabel('Value')
+    plt.show()
+
+    plt.bar(alg_names, handovers)
+    plt.ylabel('Handovers')
+    plt.show()
 
 if __name__ == "__main__":
-    real_power_constellation_test()
+    large_real_test()

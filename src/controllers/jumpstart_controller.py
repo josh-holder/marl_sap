@@ -24,7 +24,7 @@ class JumpstartMAC:
 
         self.hidden_states = None
 
-    def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False, env=None):
+    def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         self.jumpstart_epsilon = self.jumpstart_eps_schedule.eval(t_env)
 
         if test_mode:
