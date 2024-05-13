@@ -173,7 +173,7 @@ class FilteredSAPQLearner:
         elif self.args.target_update_interval_or_tau <= 1.0:
             self._update_targets_soft(self.args.target_update_interval_or_tau)
 
-        if self.args.use_mps and not self.args.use_mps_action_selection:
+        if not self.args.use_mps_action_selection:
             self.mac.update_action_selector_agent()
 
         if t_env - self.log_stats_t >= self.args.learner_log_interval:

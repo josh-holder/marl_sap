@@ -58,15 +58,15 @@ class EpisodeRunner:
         self.t = 0
 
     def run(self, test_mode=False):
-        st = time.time()
+        # st = time.time()
         self.reset() #empty batch, reset environment, t=0
-        print(f"Reset time: {time.time() - st}")
+        # print(f"Reset time: {time.time() - st}")
         terminated = False
         episode_return = 0
         #Initialize RNN hidden state for each agent
         self.mac.init_hidden(batch_size=self.batch_size)
 
-        st = time.time()
+        # st = time.time()
         while not terminated:
             pre_transition_data = self.env.get_pretransition_data()
 
@@ -95,7 +95,7 @@ class EpisodeRunner:
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
-        print(f"Time to run env and choose actions: {time.time() - st}")
+        # print(f"Time to run env and choose actions: {time.time() - st}")
 
         last_data = self.env.get_pretransition_data()
         if test_mode and self.args.render:

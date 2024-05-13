@@ -51,12 +51,12 @@ class QLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-        rewards = batch["rewards"][:, :-1]
-        actions = batch["actions"][:, :-1]
+        rewards = batch["rewards"][:, :-1].float()
+        actions = batch["actions"][:, :-1].to(th.int64)
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
-        avail_actions = batch["avail_actions"]
+        avail_actions = batch["avail_actions"].to(th.int64)
 
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
@@ -133,6 +133,9 @@ class QLearner:
             self.last_target_update_step = self.training_steps
         elif self.args.target_update_interval_or_tau <= 1.0:
             self._update_targets_soft(self.args.target_update_interval_or_tau)
+
+        if not self.args.use_mps_action_selection:
+            self.mac.update_action_selector_agent()
 
         if t_env - self.log_stats_t >= self.args.learner_log_interval:
             self.logger.log_stat("loss", loss.item(), t_env)
