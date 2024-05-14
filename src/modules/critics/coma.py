@@ -11,11 +11,12 @@ class COMACritic(nn.Module):
         self.m = args.m
         self.n = args.n
 
-        input_shape = self._get_input_shape(scheme)
+        self.scheme = scheme
+        self.input_shape = self._get_input_shape(scheme)
         self.output_type = "q"
 
         # Set up network layers
-        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc1 = nn.Linear(self.input_shape, args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
         self.fc3 = nn.Linear(args.hidden_dim, self.m)
 
@@ -31,8 +32,13 @@ class COMACritic(nn.Module):
         max_t = batch.max_seq_length if t is None else 1
         ts = slice(None) if t is None else slice(t, t+1)
         inputs = []
-        # state
-        inputs.append(batch["state"][:, ts].unsqueeze(2).repeat(1, 1, self.n, 1))
+        # state assumes (bs x max_time x state_dim, transformed to batch x time x n x state_dim)
+        state = []
+        for key in self.scheme.keys():
+            if self.scheme[key].get("part_of_state", False):
+                state.append(batch[key].view(bs, max_t, 1, -1).repeat(1, 1, self.n, 1))
+        state = th.cat(state, dim=-1)
+        inputs.append(state)
 
         # observation
         if self.args.obs_individual_obs:
@@ -62,8 +68,14 @@ class COMACritic(nn.Module):
         return inputs
 
     def _get_input_shape(self, scheme):
-        # state
-        input_shape = scheme["state"]["vshape"]
+        input_shape = 0
+        # get flattened size of state
+        for key in scheme.keys():
+            if scheme[key].get("part_of_state", False):
+                shape_contribution = 1
+                for dim in scheme[key]["vshape"]:
+                    shape_contribution *= dim
+                input_shape += shape_contribution
         # observation
         if self.args.obs_individual_obs:
             input_shape += scheme["obs"]["vshape"]

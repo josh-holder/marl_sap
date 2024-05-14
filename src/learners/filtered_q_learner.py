@@ -45,11 +45,10 @@ class FilteredQLearner:
             
         self.n = args.n
 
-        reward_shape = self.n if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(self.n,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities

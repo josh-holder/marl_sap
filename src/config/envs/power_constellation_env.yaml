@@ -8,8 +8,6 @@ env_args:
   lambda_: 0.5
   bids_as_actions: null
 
-cooperative_rewards: False
-
 test_greedy: True
 test_nepisode: 100
 test_interval: 50000

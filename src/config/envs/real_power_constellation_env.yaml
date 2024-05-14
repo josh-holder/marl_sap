@@ -12,7 +12,6 @@ env_args:
   M: 10
 
 # Scheme related arguments
-cooperative_rewards: False
 
 test_greedy: True
 test_nepisode: 20

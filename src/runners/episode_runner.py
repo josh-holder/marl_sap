@@ -80,10 +80,8 @@ class EpisodeRunner:
             rewards, terminated, env_info = self.env.step(actions[0])
             if test_mode and self.args.render:
                 self.env.render()
-            if getattr(self.args, "cooperative_rewards", False):
-                episode_return += rewards
-            else:
-                episode_return += sum(rewards)
+            
+            episode_return += sum(rewards)
 
             post_transition_data = {
                 "actions": actions,

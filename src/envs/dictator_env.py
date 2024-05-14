@@ -160,6 +160,9 @@ class DictatorEnv(Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     
+    def get_stats(self):
+        return {}
+    
     def beta_hat(self, beta):
         """
         Given the info contained in the state, 

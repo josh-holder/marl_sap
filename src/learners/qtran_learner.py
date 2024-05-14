@@ -137,6 +137,9 @@ class QLearner:
             self._update_targets()
             self.last_target_update_episode = episode_num
 
+        if not self.args.use_mps_action_selection:
+            self.mac.update_action_selector_agent()
+
         if t_env - self.log_stats_t >= self.args.learner_log_interval:
             self.logger.log_stat("loss", loss.item(), t_env)
             self.logger.log_stat("td_loss", td_loss.item(), t_env)

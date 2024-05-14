@@ -41,8 +41,9 @@ class PPOLearner:
             
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n, ), device=device)
+
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(1,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(self.n,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
@@ -116,6 +117,9 @@ class PPOLearner:
         elif self.args.target_update_interval_or_tau <= 1.0:
             self._update_targets_soft(self.args.target_update_interval_or_tau)
 
+        if not self.args.use_mps_action_selection:
+            self.mac.update_action_selector_agent()
+            
         if t_env - self.log_stats_t >= self.args.learner_log_interval:
             ts_logged = len(critic_train_stats["critic_loss"])
             for key in ["critic_loss", "critic_grad_norm", "td_error_abs", "q_taken_mean", "target_mean"]:

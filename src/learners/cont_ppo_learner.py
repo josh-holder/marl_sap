@@ -42,9 +42,8 @@ class ContinuousPPOLearner:
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n, ), device=device)
 
-        reward_shape = self.n if getattr(self.args, "cooperative_rewards", False) else 1
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(reward_shape,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(self.n,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
@@ -116,6 +115,9 @@ class ContinuousPPOLearner:
             self.last_target_update_step = self.critic_training_steps
         elif self.args.target_update_interval_or_tau <= 1.0:
             self._update_targets_soft(self.args.target_update_interval_or_tau)
+        
+        if not self.args.use_mps_action_selection:
+            self.mac.update_action_selector_agent()
 
         if t_env - self.log_stats_t >= self.args.learner_log_interval:
             ts_logged = len(critic_train_stats["critic_loss"])
