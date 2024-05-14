@@ -7,35 +7,37 @@ import gym
 from gym.utils import seeding
 import numpy as np
 import scipy.optimize
+import torch as th
+from components.transforms import OneHot
 
 class MockConstellationEnv(Env):
     """
     Model a constellation, where benefits are provided to you for task in several states
     """
     def __init__(self,
-                 n, num_tasks, 
-                 T, 
+                 n, m, T, 
                  L, lambda_,
                  bids_as_actions=False,
                  seed=None,
                  sat_prox_mat=None,#if you want to train on only one specific benefit matrix
-                 benefit_info=None):
+                 T_trans=None,
+                ):
         self.logger = logging.getLogger(__name__)
         self.seed(seed)
 
         self.n = n
-        self.m = num_tasks
+        self.m = m
         self.T = T
-
-        self.benefit_fn = meaningful_task_handover_pen_benefit_fn
-        self.benefit_info = benefit_info
 
         if sat_prox_mat is None:
             self.constant_benefits = False
-            self.sat_prox_mat = generate_benefits_over_time(n, num_tasks, T, 3, 6)
+            self.sat_prox_mat = generate_benefits_over_time(n, m, T, 3, 6)
         else:
             self.constant_benefits = True
             self.sat_prox_mat = sat_prox_mat
+
+        #default to all transitions (except nontransitions) being penalized
+        self.T_trans = T_trans if T_trans is not None else np.ones((m,m)) - np.eye(m)
 
         #Number of steps to look into the future
         self.L = L
@@ -60,6 +62,57 @@ class MockConstellationEnv(Env):
         self.obs_space_size = self.L * self.m + self.m
         self.observation_space = gym.spaces.Tuple(tuple([gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.obs_space_size,))] * self.n))
 
+        self.scheme, self.preprocess = self._get_scheme_and_preprocess()
+
+    def _get_scheme_and_preprocess(self):
+        """
+        Contains the scheme and preprocess functions for the environment.
+
+        If a scheme entry contains a "part_of_state" key, the corresponding data will be passed to the agents as part of the state.
+        """
+        scheme = { #half precision
+            "obs": {"vshape": self.obs_space_size, "group": "agents", "dtype": th.float32},
+            "actions": {"vshape": (1,), "group": "agents", "dtype": th.int64},
+            "avail_actions": {
+                "vshape": (self.m,),
+                "group": "agents",
+                "dtype": th.bool,
+            },
+            "rewards": {"vshape": (self.n,), "dtype": th.float32},
+            "terminated": {"vshape": (1,), "dtype": th.bool},
+            "prev_assigns": {"vshape": (self.n,), "dtype": th.int64, "part_of_state": True},
+            "beta": {"vshape": (self.n, self.m), "dtype": th.float32, "part_of_state": True},
+        }
+        preprocess = {"actions": ("actions_onehot", [OneHot(out_dim=self.m)])}
+
+        if self.bids_as_actions:
+            scheme["actions"] = {"vshape": (self.m,), "group": "agents", "dtype": th.float32}
+            preprocess = {}
+        
+        return scheme, preprocess
+
+    def reset(self):
+        """ Resets environment."""
+        self.curr_assignment = np.zeros((self.n, self.m))
+        self.k = 0
+
+        if not self.constant_benefits:
+            self.sat_prox_mat = generate_benefits_over_time(self.n, self.m, self.T, 3, 6)
+        else:
+            pass #if benefits are constant, do nothing because you should use the same benefit matrix
+
+        self.beta = self.sat_prox_mat[:,:,self.k]
+        self.prev_assigns = np.random.choice(self.m, self.n, replace=False)
+
+        self._obs = [self.curr_assignment[i,:] for i in range(self.n)]
+        for l in range(self.L):
+            if self.k + l < self.T:
+                self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n)]
+            else: #if the episode has ended within your lookahead of L, just pad with zeros
+                self._obs = [np.concatenate([self._obs[i], np.zeros(self.m)]) for i in range(self.n)]
+
+        return self.get_obs(), self.get_state()
+
     def step(self, actions):
         """ 
         Input is actions in Discrete form.
@@ -68,9 +121,9 @@ class MockConstellationEnv(Env):
         if self.bids_as_actions:
             _, assignments = scipy.optimize.linear_sum_assignment(actions, maximize=True)
         else:
-            assignments = [int(a) for a in actions]
+            assignments = np.array(actions, dtype=int)
 
-        adj_benefits = self.benefit_fn(self.sat_prox_mat[:,:,self.k], self.curr_assignment, self.lambda_)
+        beta_hat = self.beta_hat(self.beta, self.prev_assigns)
 
         num_times_tasks_completed = np.zeros(self.m)
         for i in range(self.n):
@@ -79,11 +132,11 @@ class MockConstellationEnv(Env):
         rewards = []
         for i in range(self.n):
             chosen_task = assignments[i]
-            if adj_benefits[i, chosen_task] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
-                rewards.append(adj_benefits[i, chosen_task] / num_times_tasks_completed[chosen_task])
+            if beta_hat[i, chosen_task] > 0: #only split rewards if the task is worth doing, otherwise get the full handover penalty
+                rewards.append(beta_hat[i, chosen_task] / num_times_tasks_completed[chosen_task])
             else:
-                rewards.append(adj_benefits[i, chosen_task])
-
+                rewards.append(beta_hat[i, chosen_task])
+            
         #Update the prev assignment:
         self.curr_assignment = np.zeros((self.n, self.m))
         for i in range(self.n):
@@ -99,26 +152,27 @@ class MockConstellationEnv(Env):
                 self._obs = [np.concatenate([self._obs[i], np.zeros(self.m)]) for i in range(self.n)]
 
         done = self.k >= self.T
-        return rewards, done, {}
 
-    def reset(self):
-        """ Resets environment."""
-        self.curr_assignment = np.zeros((self.n, self.m))
-        self.k = 0
-
-        if not self.constant_benefits:
-            self.sat_prox_mat = generate_benefits_over_time(self.n, self.m, self.T, 3, 6)
+        if not done:
+            self.beta = self.sat_prox_mat[:,:,self.k]
         else:
-            pass #if benefits are constant, do nothing because you should use the same benefit matrix
+            self.beta = np.zeros((self.n, self.m))
+        self.prev_assigns = assignments
 
-        self._obs = [self.curr_assignment[i,:] for i in range(self.n)]
-        for l in range(self.L):
-            if self.k + l < self.T:
-                self._obs = [np.concatenate([self._obs[i], self.sat_prox_mat[i,:,self.k+l]]) for i in range(self.n)]
-            else: #if the episode has ended within your lookahead of L, just pad with zeros
-                self._obs = [np.concatenate([self._obs[i], np.zeros(self.m)]) for i in range(self.n)]
+        return rewards, done, {}
+    
+    def get_pretransition_data(self):
+        """
+        Creates a dict with the data that should be recorded before the transition.
 
-        return self.get_obs(), self.get_state()
+        All "add_pretransition_data()" functions must at least have entries for "beta" and "obs".
+        """
+        pretransition_data = {
+            "obs": [self._obs],
+            "avail_actions": [self.get_avail_actions()],
+            "beta": [self.beta],
+        }
+        return pretransition_data
 
     def close(self):
         return True
@@ -171,61 +225,55 @@ class MockConstellationEnv(Env):
                     "T": self.T}
         return env_info
 
-def meaningful_task_handover_pen_benefit_fn(sat_prox_mat, prev_assign, lambda_, benefit_info=None):
-    """
-    Adjusts a 3D benefit matrix to account for generic handover penalty (i.e. constant penalty for switching tasks).
+    def beta_hat(self, beta, prev_assigns):
+        """
+        Given the info contained in the state, 
+        returns a matrix of benefits for each agent-task pair.
 
-    benefit_info is an object which can contain extra information about the benefits - it should store:
-     - task_benefits is a m-length array of the baseline benefits associated with each task.
-     - T_trans is a matrix which determines which transitions between TASKS are penalized.
-        It is m x m, where entry ij is the state dependence multiplier that should be applied when switching from task i to task j.
-        (If it is None, then all transitions between different tasks are scaled by 1.)
-    Then, prev_assign @ T_trans is the matrix which entries of the benefit matrix should be adjusted.
-    """
-    if lambda_ is None: lambda_ = 0 #if lambda_ is not provided, then add no penalty so lambda_=0
-    init_dim = sat_prox_mat.ndim
-    if init_dim == 2: sat_prox_mat = np.expand_dims(sat_prox_mat, axis=2)
-    n = sat_prox_mat.shape[0]
-    m = sat_prox_mat.shape[1]
-    L = sat_prox_mat.shape[2]
+        If initially has a time dimension, outputs a time_dim x n x m x L matrix.
+        """
+        #if beta or prev_assigns is a tensor, convert to numpy
+        if isinstance(beta, th.Tensor): beta = beta.numpy()
+        if isinstance(prev_assigns, th.Tensor): prev_assigns = prev_assigns.numpy()
+        #add two dimensions (batch and time) to the beta and prev_assigns if they are not already there
+        beta_init_dim = beta.ndim
+        if beta_init_dim == 2:
+            # beta = np.expand_dims(beta, axis=0)
+            beta = np.expand_dims(beta, axis=0)
+        prev_assigns_init_dim = prev_assigns.ndim
+        if prev_assigns_init_dim == 1: 
+            # prev_assigns = np.expand_dims(prev_assigns, axis=0)
+            prev_assigns = np.expand_dims(prev_assigns, axis=0)
+        # batch_dim = beta.shape[0]
+        time_dim = beta.shape[0]
 
-    #Generate a matrix which determines the benefits of each task at each timestep.
-    if benefit_info is not None and benefit_info.task_benefits is not None:
-        task_benefits = benefit_info.task_benefits
-    else:
-        task_benefits = np.ones(m)
-    task_benefits = np.tile(task_benefits, (n,1))
-    task_benefits = np.repeat(task_benefits[:,:,np.newaxis], L, axis=2)
+        prev_assign_mat = np.zeros((time_dim, self.n, self.m))
+        # for batch in range(batch_dim):
+        for time in range(time_dim):
+            for i in range(self.n):
+                prev_assign_mat[time, i, prev_assigns[time, i]] = 1
 
-    benefits_hat = sat_prox_mat * task_benefits
-
-    #Determine tasks for which to apply a handover penalty.
-    if prev_assign is None:
-        penalty_locations = np.zeros((n,m))
-    else:
+        #~~~~~~~~~~~~~~~~~~~~~~~~ CALCULATE HANDOVER PENALTY ~~~~~~~~~~~~~~~~~~~~~~~~
         #Calculate which transitions are not penalized because of the type of task they are
         #(i.e. some tasks are dummy tasks, or correspond to the same task at a different priority, etc.)
-        try:
-            T_trans = benefit_info.T_trans
-        except AttributeError:
-            T_trans = None
-        if T_trans is None:
-            T_trans = np.ones((m,m)) - np.eye(m) #default to all transitions (except nontransitions) being penalized
-        pen_locs_based_on_T_trans = prev_assign @ T_trans
+        #this info is held in T_trans.
+        pen_locs_based_on_T_trans = prev_assign_mat @ self.T_trans
 
         #Calculate which transitions are not penalized because they are not meaningful tasks (i.e. have zero benefit)
-        pen_locs_based_on_task_benefits = benefits_hat.sum(-1) > 1e-12
+        pen_locs_based_on_task_prios = beta > 1e-12
 
         #Penalty is only applied when both conditions are met, so multiply them elementwise
-        penalty_locations = pen_locs_based_on_T_trans * pen_locs_based_on_task_benefits
+        penalty_locations = pen_locs_based_on_T_trans * pen_locs_based_on_task_prios
 
-    benefits_hat[:,:,0] = benefits_hat[:,:,0]-lambda_*penalty_locations
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~ APPLY HANDOVER PENALTY ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        beta_hat = beta.copy()
+        beta_hat = beta_hat-self.lambda_*penalty_locations
 
-    if init_dim == 2: 
-        benefits_hat = np.squeeze(benefits_hat, axis=2)
-    return benefits_hat
+        if beta_init_dim == 2: beta_hat = np.squeeze(beta_hat, axis=0)
+        if prev_assigns_init_dim == 1: prev_assigns = np.squeeze(prev_assigns, axis=0)
+        return beta_hat
 
-def generate_benefits_over_time(n, m, T, width_min, width_max, scale_min=0.25, scale_max=2):
+def generate_benefits_over_time(n, m, T, width_min, width_max, scale_min=1, scale_max=1):
     """
     lightweight way of generating "constellation-like" benefit matrices.
     """
@@ -245,6 +293,7 @@ def generate_benefits_over_time(n, m, T, width_min, width_max, scale_min=0.25, s
 
                 #how high is the benefit curve
                 benefit_scale = np.random.uniform(scale_min, scale_max)
+                # benefit_scale = np.random.choice([1, 4, 10])
                   
                 #iterate from time zero to t_final with T steps in between
                 for t in range(T):

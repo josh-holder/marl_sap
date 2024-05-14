@@ -39,4 +39,4 @@ standardise_rewards: True
 double_q: True
 mixer: # Mixer becomes None
 
-name: "filtered_iql"
+name: "dictator_iql"
