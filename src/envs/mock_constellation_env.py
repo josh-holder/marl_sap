@@ -31,7 +31,7 @@ class MockConstellationEnv(Env):
 
         if sat_prox_mat is None:
             self.constant_benefits = False
-            self.sat_prox_mat = generate_benefits_over_time(n, m, T, 3, 6)
+            self.sat_prox_mat = generate_benefits_over_time(n, m, T, 5, 8)
         else:
             self.constant_benefits = True
             self.sat_prox_mat = sat_prox_mat
@@ -273,13 +273,14 @@ class MockConstellationEnv(Env):
         if prev_assigns_init_dim == 1: prev_assigns = np.squeeze(prev_assigns, axis=0)
         return beta_hat
 
-def generate_benefits_over_time(n, m, T, width_min, width_max, scale_min=1, scale_max=1):
+def generate_benefits_over_time(n, m, T, width_min, width_max, scale_min=0.25, scale_max=2):
     """
     lightweight way of generating "constellation-like" benefit matrices.
     """
     benefits = np.zeros((n,m,T))
-    for i in range(n):
-        for j in range(m):
+    for j in range(m):
+        benefit_scale = np.random.choice([1, 1, 1, 10])
+        for i in range(n):
             #Determine if task is active for this sat ever
             task_active = 1 if np.random.rand() > 0.75 else 0
 
@@ -290,10 +291,6 @@ def generate_benefits_over_time(n, m, T, width_min, width_max, scale_min=1, scal
                 #how wide is the benefit curve
                 time_spread = np.random.uniform(width_min, width_max)
                 sigma_2 = np.sqrt(time_spread**2/-8/np.log(0.05))
-
-                #how high is the benefit curve
-                benefit_scale = np.random.uniform(scale_min, scale_max)
-                # benefit_scale = np.random.choice([1, 4, 10])
                   
                 #iterate from time zero to t_final with T steps in between
                 for t in range(T):

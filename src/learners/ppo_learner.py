@@ -131,6 +131,48 @@ class PPOLearner:
             self.logger.log_stat("pi_max", (pi.max(dim=-1)[0] * mask).sum().item() / mask.sum().item(), t_env)
             self.log_stats_t = t_env
 
+            avg_num_conflicts = self.calc_conflicting_actions(actions)
+            self.logger.log_stat("avg_num_conflicts", avg_num_conflicts, t_env)
+
+            avg_beta = self.calc_raw_benefits(batch["beta"], actions)
+            self.logger.log_stat("avg_beta", avg_beta, t_env)
+
+    def calc_conflicting_actions(self, actions):
+        batches = actions.shape[0]
+        timesteps = actions.shape[1]
+
+        num_duplicates = 0
+        for b in range(batches):
+            for k in range(timesteps):
+                num_times_done = np.zeros(self.m)
+                for i in range(self.n):
+                    chosen_action = actions[b, k, i, 0].item()
+                    num_times_done[chosen_action] += 1
+                
+                num_duplicates += np.where(num_times_done > 0, num_times_done - 1, 0).sum()
+
+        return num_duplicates/batches/timesteps
+
+    def calc_raw_benefits(self, beta, actions):
+        if beta.ndim == 4:
+            pass
+        elif beta.dim == 5:
+            beta = beta[:, :, :, :, 0]
+        else:
+            raise ValueError("beta has unexpected shape.")
+        
+        batches = actions.shape[0]
+        timesteps = actions.shape[1]
+
+        total_benefit = 0
+        for b in range(batches):
+            for k in range(timesteps):
+                for i in range(self.n):
+                    chosen_action = actions[b, k, i, 0].item()
+                    total_benefit += beta[b, k, i, chosen_action]
+                
+        return total_benefit/batches/timesteps
+
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask):
         # Optimise critic
         with th.no_grad():
