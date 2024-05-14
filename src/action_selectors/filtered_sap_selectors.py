@@ -56,7 +56,9 @@ class FilteredSAPActionSelector():
             benefit_matrix_from_q_values[indices[0], top_agent_tasks] = top_M_benefits_from_q_values
 
             #Add zero-mean gaussian noise with variance epsilon to the Q-values
-            benefit_matrix_from_q_values += th.randn_like(benefit_matrix_from_q_values)*self.epsilon #TODO: more intelligent scaling of epsilon
+            avg_q_val = th.mean(th.abs(benefit_matrix_from_q_values))
+            stds = th.ones_like(benefit_matrix_from_q_values)*avg_q_val*self.epsilon*2
+            benefit_matrix_from_q_values += th.normal(mean=th.zeros_like(benefit_matrix_from_q_values), std=stds)
 
             _, col_ind = scipy.optimize.linear_sum_assignment(benefit_matrix_from_q_values.cpu(), maximize=True)
             picked_actions[batch, :] = th.tensor(col_ind)

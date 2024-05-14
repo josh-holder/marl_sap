@@ -3,15 +3,15 @@
 mac: "jumpstart_mac"
 # use epsilon greedy action selector
 action_selector: "filtered_const_sap"
-epsilon_start: 0.15
-epsilon_finish: 0.005
+epsilon_start: 1
+epsilon_finish: 0
 epsilon_anneal_time: 300000
 evaluation_epsilon: 0
 # jumpstart_policy configs
 jumpstart_action_selector: "haa_selector"
 jumpstart_epsilon_start: 1
 jumpstart_epsilon_finish: 0
-jumpstart_epsilon_anneal_time: 150000
+jumpstart_epsilon_anneal_time: 300000
 jumpstart_evaluation_epsilon: 0
 
 # Pretraining configs
@@ -25,6 +25,7 @@ t_max: 500000
 runner: "episode"
 
 buffer_size: 1000
+batch_size: 5
 
 use_mps: True
 
