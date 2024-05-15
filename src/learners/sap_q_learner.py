@@ -6,6 +6,7 @@ import torch as th
 from torch.optim import Adam
 from components.standarize_stream import RunningMeanStd
 import scipy.optimize
+import numpy as np
 
 class SAPQLearner:
     def __init__(self, mac, scheme, logger, args):
@@ -197,7 +198,7 @@ class SAPQLearner:
                     chosen_action = actions[b, k, i, 0].item()
                     total_benefit += beta[b, k, i, chosen_action]
                 
-        return total_benefit/batches/timesteps
+        return total_benefit/batches/timesteps/self.n
 
     def _update_targets_hard(self):
         self.target_mac.load_state(self.mac)

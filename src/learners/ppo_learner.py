@@ -8,6 +8,7 @@ import torch as th
 from torch.optim import Adam
 from modules.critics import REGISTRY as critic_resigtry
 from components.standarize_stream import RunningMeanStd
+import numpy as np
 
 
 class PPOLearner:
@@ -171,7 +172,7 @@ class PPOLearner:
                     chosen_action = actions[b, k, i, 0].item()
                     total_benefit += beta[b, k, i, chosen_action]
                 
-        return total_benefit/batches/timesteps
+        return total_benefit/batches/timesteps/self.n
 
     def train_critic_sequential(self, critic, target_critic, batch, rewards, mask):
         # Optimise critic

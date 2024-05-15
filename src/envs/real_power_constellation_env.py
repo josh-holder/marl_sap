@@ -66,8 +66,8 @@ class RealPowerConstellationEnv(Env):
         #default to all transitions (except nontransitions) being penalized
         self.T_trans = T_trans if T_trans is not None else np.ones((m,m)) - np.eye(m)
 
-        #default to all tasks having the same priority
-        self.task_prios = task_prios if task_prios is not None else np.ones(self.m)
+        #default to all tasks having a 1/4 chance of being high priority
+        self.task_prios = task_prios if task_prios is not None else np.random.choice([1,1,1,5], size=m, replace=True)
         #Expand the task priorities to be a n x m x L matrix from a m length vector.
         self.task_prios = np.tile(self.task_prios, (self.n,1))
         self.task_prios = np.repeat(self.task_prios[:,:,np.newaxis], self.L, axis=-1)

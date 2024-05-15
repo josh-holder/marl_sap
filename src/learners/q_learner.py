@@ -188,7 +188,7 @@ class QLearner:
                     chosen_action = actions[b, k, i, 0].item()
                     total_benefit += beta[b, k, i, chosen_action]
                 
-        return total_benefit/batches/timesteps
+        return total_benefit/batches/timesteps/self.n
 
     def _update_targets_hard(self):
         self.target_mac.load_state(self.mac)

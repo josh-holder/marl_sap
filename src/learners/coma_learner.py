@@ -6,6 +6,7 @@ import torch as th
 from torch.optim import Adam
 from modules.critics import REGISTRY as critic_registry
 from components.standarize_stream import RunningMeanStd
+import numpy as np
 
 class COMALearner:
     def __init__(self, mac, scheme, logger, args):
@@ -159,7 +160,7 @@ class COMALearner:
                     chosen_action = actions[b, k, i, 0].item()
                     total_benefit += beta[b, k, i, chosen_action]
                 
-        return total_benefit/batches/timesteps
+        return total_benefit/batches/timesteps/self.n
 
     def _train_critic(self, batch, rewards, terminated, actions, avail_actions, mask, bs, max_t):
         # Optimise critic

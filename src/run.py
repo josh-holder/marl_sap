@@ -243,7 +243,7 @@ def run_sequential(args, logger):
         episode_batch = runner.run(test_mode=False)
         buffer.insert_episode_batch(episode_batch)
 
-        # st = time.time()
+        st = time.time()
         if buffer.can_sample(args.batch_size):
             episode_sample = buffer.sample(args.batch_size)
 
@@ -256,7 +256,7 @@ def run_sequential(args, logger):
                 episode_sample.to(args.device)
 
             learner.train(episode_sample, runner.t_env, episode)
-            # print("Training time: ", time.time() - st)
+            print("Training time: ", time.time() - st)
 
         # Execute test runs once in a while
         n_test_runs = max(1, args.test_nepisode // runner.batch_size)

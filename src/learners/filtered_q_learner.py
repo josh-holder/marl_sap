@@ -44,6 +44,7 @@ class FilteredQLearner:
             device = "cpu"
             
         self.n = args.n
+        self.m = args.m
 
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
@@ -199,10 +200,10 @@ class FilteredQLearner:
     def calc_raw_benefits(self, beta, actions):
         if beta.ndim == 4:
             pass
-        elif beta.dim == 5:
+        elif beta.ndim == 5:
             beta = beta[:, :, :, :, 0]
         else:
-            raise ValueError("beta has unexpected shape.")
+            raise ValueError("beta has unexpected shape.", beta.shape)
         
         batches = actions.shape[0]
         timesteps = actions.shape[1]
@@ -214,7 +215,7 @@ class FilteredQLearner:
                     chosen_action = actions[b, k, i, 0].item()
                     total_benefit += beta[b, k, i, chosen_action]
                 
-        return total_benefit/batches/timesteps
+        return total_benefit/batches/timesteps/self.n
 
     def _update_targets_hard(self):
         self.target_mac.load_state(self.mac)
