@@ -15,8 +15,8 @@ env_args:
 
 test_greedy: True
 test_nepisode: 20
-test_interval: 50000
-log_interval: 50000
+test_interval: 25000
+log_interval: 25000
 runner_log_interval: 5000
 learner_log_interval: 5000
 use_wandb: False
