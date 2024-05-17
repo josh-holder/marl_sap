@@ -1,11 +1,13 @@
 from envs import REGISTRY as env_REGISTRY
-from action_selectors import REGISTRY as non_rl_selector_REGISTRY
+from action_selectors.non_rl_selectors import REGISTRY as non_rl_selector_REGISTRY
 from functools import partial
 from components.episode_buffer import EpisodeBatch
 from multiprocessing import Pipe, Process
 import numpy as np
 import torch as th
 import scipy.optimize
+from collections import defaultdict
+import time
 
 # Based (very) heavily on SubprocVecEnv from OpenAI Baselines
 # https://github.com/openai/baselines/blob/master/baselines/common/vec_env/subproc_vec_env.py
@@ -31,22 +33,23 @@ class PretrainRunner:
             p.daemon = True
             p.start()
 
-        self.parent_conns[0].send(("get_env_info", None))
-        self.env_info = self.parent_conns[0].recv()
-        self.T = self.env_info["T"]
+        self.T = self.args.env_args["T"]
 
         self.t = 0
         self.b = 0
 
         self.buffer = buffer
 
-        self.pretrain_fn = non_rl_selector_REGISTRY[self.args.pretrain_fn]
+        #Build pretraining function, and add envs to it
+        self.pretrain_fn = non_rl_selector_REGISTRY[self.args.pretrain_fn](self.args)
+
+        for parent_conn in self.parent_conns:
+            parent_conn.send(("get_env", None))
+        envs = [parent_conn.recv() for parent_conn in self.parent_conns]
+        self.pretrain_fn.envs = envs
 
         self.new_batch = partial(EpisodeBatch, scheme, groups, self.batch_size, self.T + 1,
                                 preprocess=self.buffer.preprocess, device="cpu")
-
-    def get_env_info(self):
-        return self.env_info
 
     def close_env(self):
         for parent_conn in self.parent_conns:
@@ -59,17 +62,12 @@ class PretrainRunner:
         for parent_conn in self.parent_conns:
             parent_conn.send(("reset", None))
 
-        pre_transition_data = {
-            "state": [],
-            "avail_actions": [],
-            "obs": []
-        }
+        pre_transition_data = defaultdict(list)
         # Get the obs, state and avail_actions back
         for parent_conn in self.parent_conns:
             data = parent_conn.recv()
-            pre_transition_data["state"].append(data["state"])
-            pre_transition_data["avail_actions"].append(data["avail_actions"])
-            pre_transition_data["obs"].append(data["obs"])
+            for k, v in data.items():
+                pre_transition_data[k].extend(v)
 
         self.batch.update(pre_transition_data, ts=0)
 
@@ -79,6 +77,7 @@ class PretrainRunner:
         """
         Fills buffer until full by running individual episodes with run().
         """
+        print("filling buffer")
         while self.b < self.args.buffer_size:
             if (self.b % 100) == 0: self.logger.console_logger.info(f"Generating offline dataset: {self.b}/{self.args.buffer_size}")
             episode_batch = self.run()
@@ -100,7 +99,7 @@ class PretrainRunner:
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
             # NOTE: will need to actually pass in env per batch if I use HAAL to generate databases.
             # NOTE: might break because of the timestep situation - betahat expects no timestep axis?
-            actions = self.pretrain_fn(self.args, self.batch[:,self.t]["state"], self.sample_env)
+            actions = self.pretrain_fn.select_action(self.batch[:, self.t])
 
             # Update the actions taken
             actions_chosen = {
@@ -130,29 +129,26 @@ class PretrainRunner:
                 "terminated": []
             }
             # Data for the next step we will insert in order to select an action
-            pre_transition_data = {
-                "state": [],
-                "avail_actions": [],
-                "obs": []
-            }
+            pre_transition_data = defaultdict(list)
 
             # Receive data back for each unterminated env
             for idx, parent_conn in enumerate(self.parent_conns):
                 if not terminated[idx]:
                     data = parent_conn.recv()
+                    worker_post_transition_data = data[0]
+                    worker_pre_transition_data = data[1]
                     # Remaining data for this current timestep
-                    post_transition_data["rewards"].append((data["rewards"],))
+                    post_transition_data["rewards"].append((worker_post_transition_data["rewards"],))
 
                     env_terminated = False
-                    if data["terminated"] and not data["info"].get("T", False):
+                    if post_transition_data["terminated"] and not worker_post_transition_data["info"].get("T", False):
                         env_terminated = True
-                    terminated[idx] = data["terminated"]
+                    terminated[idx] = worker_post_transition_data["terminated"]
                     post_transition_data["terminated"].append((env_terminated,))
 
                     # Data for the next timestep needed to select an action
-                    pre_transition_data["state"].append(data["state"])
-                    pre_transition_data["avail_actions"].append(data["avail_actions"])
-                    pre_transition_data["obs"].append(data["obs"])
+                    for k, v in worker_pre_transition_data.items():
+                        pre_transition_data[k].extend(v)
 
             # Add post_transiton data into the batch
             self.batch.update(post_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=False)
@@ -162,7 +158,6 @@ class PretrainRunner:
 
             # Add the pre-transition data
             self.batch.update(pre_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=True)
-
         return self.batch
 
 def env_worker(remote, env_fn):
@@ -175,38 +170,33 @@ def env_worker(remote, env_fn):
             # Take a step in the environment
             rewards, terminated, env_info = env.step(actions)
             # Return the observations, avail_actions and state to make the next action
-            state = env.get_state()
-            avail_actions = env.get_avail_actions()
-            obs = env.get_obs()
-            remote.send({
-                # Data for the next timestep needed to pick an action
-                "state": state,
-                "avail_actions": avail_actions,
-                "obs": obs,
+            
+            post_transition_data = {
                 # Rest of the data for the current timestep
                 "rewards": rewards,
                 "terminated": terminated,
                 "info": env_info
-            })
+            }
+
+            pretransition_data = env.get_pretransition_data()
+
+            remote.send([post_transition_data, pretransition_data])
         elif cmd == "reset":
             env.reset()
-            remote.send({
-                "state": env.get_state(),
-                "avail_actions": env.get_avail_actions(),
-                "obs": env.get_obs()
-            })
+            pretransition_data = env.get_pretransition_data()
+            remote.send(pretransition_data)
         elif cmd == "close":
             env.close()
             remote.close()
             break
-        elif cmd == "get_env_info":
-            remote.send(env.get_env_info())
         elif cmd == "get_stats":
             remote.send(env.get_stats())
         elif cmd == "render":
             env.render()
         elif cmd == "save_replay":
             env.save_replay()
+        elif cmd == "get_env":
+            remote.send(env)
         else:
             raise NotImplementedError
 

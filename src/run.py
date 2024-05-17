@@ -113,8 +113,9 @@ def run_sequential(args, logger):
     groups = {"agents": args.n}
 
     #LOAD OR GENERATE AN OFFLINE DATASET
-    use_offline_dataset = getattr(args, "use_offline_dataset", False)
-    if not use_offline_dataset:
+    use_bc = getattr(args, "use_bc", False)
+    use_offline_rl = getattr(args, "use_offline_rl", False)
+    if not use_bc and not use_offline_rl:
         logger.console_logger.info("No offline dataset desired - proceeding as normal.")
         buffer = ReplayBuffer(
             sample_env.scheme,
@@ -154,9 +155,14 @@ def run_sequential(args, logger):
 
     # Learner
     learner = le_REGISTRY[args.learner](mac, buffer.scheme, logger, args)
+    if use_bc: bc_learner = le_REGISTRY["bc_learner"](mac, buffer.scheme, logger, args)
 
-    if args.use_mps: learner.mps()
-    elif args.use_cuda: learner.cuda()
+    if args.use_mps: 
+        learner.mps()
+        if use_bc: bc_learner.mps()
+    elif args.use_cuda: 
+        learner.cuda()
+        if use_bc: bc_learner.cuda()
 
     if args.checkpoint_path != "":
 
@@ -187,6 +193,7 @@ def run_sequential(args, logger):
 
         logger.console_logger.info("Loading model from {}".format(model_path))
         learner.load_models(model_path)
+        bc_learner.load_models(model_path)
         runner.t_env = timestep_to_load
 
     if args.evaluate or args.save_replay:
@@ -197,33 +204,20 @@ def run_sequential(args, logger):
         logger.console_logger.info("Finished Evaluation")
         return actions, reward
 
-    #Train on the offline dataset.
-    if use_offline_dataset:
-        logger.console_logger.info("Testing model before pretraining...")
-        n_test_runs = max(1, args.test_nepisode // runner.batch_size)
-        for _ in range(n_test_runs):
-            runner.run(test_mode=True)
-        save_path = os.path.join(
-                args.local_results_path, "models", args.unique_token, "-1"
+    if use_offline_rl:
+        run_offline_rl(args, logger, runner, buffer, learner)
+    if use_bc:
+        run_behavior_cloning(args, logger, runner, buffer, bc_learner)
+        #Reset the buffer to an empty buffer, with the size of the batch size.
+        #This is so that we can fit with actor-critic training, which is fully on-policy.
+        buffer = ReplayBuffer(
+                sample_env.scheme,
+                groups,
+                args.batch_size,
+                sample_env.T + 1, #max_seq_length
+                preprocess=sample_env.preprocess,
+                device="cpu" if args.buffer_cpu_only else args.device,
             )
-        os.makedirs(save_path, exist_ok=True)
-        logger.console_logger.info("Saving models to {}".format(save_path))
-
-        pretrain_batches = 0
-        while pretrain_batches < args.pretrain_batches:
-            if (pretrain_batches % 50) == 0: logger.console_logger.info(f"Pretraining, {pretrain_batches}/{args.pretrain_batches}")
-            episode_sample = buffer.sample(args.batch_size)
-
-            # Truncate batch to only filled timesteps
-            max_ep_t = episode_sample.max_t_filled()
-            episode_sample = episode_sample[:, :max_ep_t]
-
-            #If the data from the replay buffer is on CPU, move it to GPU
-            if episode_sample.device != args.device:
-                episode_sample.to(args.device)
-
-            learner.train(episode_sample, 0, episode_num=0)
-            pretrain_batches += 1
 
     # start training
     episode = 0
@@ -302,6 +296,63 @@ def run_sequential(args, logger):
     runner.close_env()
     logger.console_logger.info("Finished Training")
 
+
+def run_offline_rl(args, logger, runner, buffer, learner):
+    #Train on the offline dataset.
+    logger.console_logger.info("Testing model before offline RL pretraining...")
+    n_test_runs = max(1, args.test_nepisode // runner.batch_size)
+    for _ in range(n_test_runs):
+        runner.run(test_mode=True)
+    if args.save_model:
+        save_path = os.path.join(
+                args.local_results_path, "models", args.unique_token, "-1"
+            )
+        os.makedirs(save_path, exist_ok=True)
+        logger.console_logger.info("Saving models to {}".format(save_path))
+
+    pretrain_batches = 0
+    while pretrain_batches < args.pretrain_batches:
+        if (pretrain_batches % 50) == 0: logger.console_logger.info(f"Pretraining w offline RL, {pretrain_batches}/{args.pretrain_batches}")
+        episode_sample = buffer.sample(args.batch_size)
+
+        # Truncate batch to only filled timesteps
+        max_ep_t = episode_sample.max_t_filled()
+        episode_sample = episode_sample[:, :max_ep_t]
+
+        #If the data from the replay buffer is on CPU, move it to GPU
+        if episode_sample.device != args.device:
+            episode_sample.to(args.device)
+
+        learner.train(episode_sample, 0, episode_num=0)
+        pretrain_batches += 1
+    
+def run_behavior_cloning(args, logger, runner, buffer, learner):
+    logger.console_logger.info("Testing model before behavior cloning...")
+    n_test_runs = max(1, args.test_nepisode // runner.batch_size)
+    for _ in range(n_test_runs):
+        runner.run(test_mode=True)
+    if args.save_model:
+        save_path = os.path.join(
+                args.local_results_path, "models", args.unique_token, "-1"
+            )
+        os.makedirs(save_path, exist_ok=True)
+        logger.console_logger.info("Saving models to {}".format(save_path))
+
+    pretrain_batches = 0
+    while pretrain_batches < args.pretrain_batches:
+        if (pretrain_batches % 50) == 0: logger.console_logger.info(f"Pretraining, {pretrain_batches}/{args.pretrain_batches}")
+        episode_sample = buffer.sample(args.batch_size)
+
+        # Truncate batch to only filled timesteps
+        max_ep_t = episode_sample.max_t_filled()
+        episode_sample = episode_sample[:, :max_ep_t]
+
+        #If the data from the replay buffer is on CPU, move it to GPU
+        if episode_sample.device != args.device:
+            episode_sample.to(args.device)
+
+        learner.train(episode_sample, 0, episode_num=0)
+        pretrain_batches += 1
 
 def args_sanity_check(config, _log):
     # set MPS and CUDA flags

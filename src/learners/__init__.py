@@ -10,6 +10,7 @@ from .actor_critic_pac_dcg_learner import PACDCGLearner
 from .maddpg_learner import MADDPGLearner
 from .ppo_learner import PPOLearner
 from .cont_ppo_learner import ContinuousPPOLearner
+from .bc_learner import BCLearner
 REGISTRY = {}
 
 REGISTRY["q_learner"] = QLearner
@@ -24,3 +25,4 @@ REGISTRY["ppo_learner"] = PPOLearner
 REGISTRY["cont_ppo_learner"] = ContinuousPPOLearner
 REGISTRY["pac_learner"] = PACActorCriticLearner
 REGISTRY["pac_dcg_learner"] = PACDCGLearner
+REGISTRY["bc_learner"] = BCLearner

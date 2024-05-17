@@ -10,7 +10,7 @@ class EpisodeRunner:
         self.args = args
         self.logger = logger
         self.batch_size = self.args.batch_size_run
-        assert self.batch_size == 1
+        assert self.batch_size == 1, "EpisodeRunner only supports batch size 1"
 
         self.env = env_REGISTRY[self.args.env](**self.args.env_args)
         self.T = self.env.T
