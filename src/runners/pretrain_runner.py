@@ -77,7 +77,6 @@ class PretrainRunner:
         """
         Fills buffer until full by running individual episodes with run().
         """
-        print("filling buffer")
         while self.b < self.args.buffer_size:
             if (self.b % 100) == 0: self.logger.console_logger.info(f"Generating offline dataset: {self.b}/{self.args.buffer_size}")
             episode_batch = self.run()

@@ -94,7 +94,7 @@ class EpisodeRunner:
 
             self.t += 1
         print(f"Time to run env and choose actions: {time.time() - st}")
-
+        print(f"Episode return: {episode_return}")
         last_data = self.env.get_pretransition_data()
         if test_mode and self.args.render:
             print(f"Episode return: {episode_return}")

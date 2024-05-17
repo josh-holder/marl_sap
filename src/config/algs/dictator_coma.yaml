@@ -39,3 +39,10 @@ critic_type: coma_critic
 
 name: "dictator_coma"
 t_max: 50000
+
+#Behavior cloning properties
+use_bc: True
+buffer_size: 100 #size of the buffer to use for behavior cloning
+offline_dataset_path: "dictator_data" #path to the offline dataset
+pretrain_batches: 500 #Episodes to train on provided replay buffer
+pretrain_batch_size_run: 2 #this seems like the sweet spot for n=324, m=450

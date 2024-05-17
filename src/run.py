@@ -138,7 +138,7 @@ def run_sequential(args, logger):
             )
             pretrain_runner = PretrainRunner(args, logger, buffer, sample_env.scheme, groups) #need to provide scheme and groups explicitly so that the scheme doesn't contain filled
             buffer = pretrain_runner.fill_buffer()
-            with open(f"datasets/{args.unique_token}", 'wb') as f:
+            with open(f"datasets/{args.unique_token}.pkl", 'wb') as f:
                 pickle.dump(buffer, f)
             logger.console_logger.info("Done generating and saving offline dataset.")
         else:
@@ -218,6 +218,8 @@ def run_sequential(args, logger):
                 preprocess=sample_env.preprocess,
                 device="cpu" if args.buffer_cpu_only else args.device,
             )
+
+    print("done with BC")
 
     # start training
     episode = 0
@@ -328,16 +330,18 @@ def run_offline_rl(args, logger, runner, buffer, learner):
     
 def run_behavior_cloning(args, logger, runner, buffer, learner):
     logger.console_logger.info("Testing model before behavior cloning...")
-    n_test_runs = max(1, args.test_nepisode // runner.batch_size)
-    for _ in range(n_test_runs):
-        runner.run(test_mode=True)
-    if args.save_model:
-        save_path = os.path.join(
-                args.local_results_path, "models", args.unique_token, "-1"
-            )
-        os.makedirs(save_path, exist_ok=True)
-        logger.console_logger.info("Saving models to {}".format(save_path))
+    # n_test_runs = max(1, args.test_nepisode // runner.batch_size)
+    # for _ in range(n_test_runs):
+    #     runner.run(test_mode=True)
+    # if args.save_model:
+    #     save_path = os.path.join(
+    #             args.local_results_path, "models", args.unique_token, "-1"
+    #         )
+    #     os.makedirs(save_path, exist_ok=True)
+    #     logger.console_logger.info("Saving models to {}".format(save_path))
 
+    print("BEFORE")
+    runner.run(test_mode=True)
     pretrain_batches = 0
     while pretrain_batches < args.pretrain_batches:
         if (pretrain_batches % 50) == 0: logger.console_logger.info(f"Pretraining, {pretrain_batches}/{args.pretrain_batches}")
@@ -353,6 +357,9 @@ def run_behavior_cloning(args, logger, runner, buffer, learner):
 
         learner.train(episode_sample, 0, episode_num=0)
         pretrain_batches += 1
+
+    print("AFTER")
+    runner.run(test_mode=True)
 
 def args_sanity_check(config, _log):
     # set MPS and CUDA flags
