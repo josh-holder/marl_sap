@@ -7,7 +7,7 @@ mask_before_softmax: True
 runner: "episode"
 
 batch_size: 32
-buffer_size: 200
+buffer_size: 32
 
 # update the target network every {} training steps
 target_update_interval_or_tau: 200
