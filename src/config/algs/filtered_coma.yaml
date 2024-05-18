@@ -1,11 +1,11 @@
 # --- COMA specific parameters ---
 
-action_selector: "soft_policies"
+action_selector: "filtered_const_soft_policies"
 mask_before_softmax: True
 
 runner: "episode"
 
-batch_size: 5
+batch_size: 16
 
 # update the target network every {} training steps
 target_update_interval_or_tau: 200
@@ -22,11 +22,11 @@ obs_individual_obs: False
 
 # use COMA
 agent_output_type: "pi_logits"
-learner: "coma_learner"
+learner: "filtered_coma_learner"
 critic_q_fn: "coma"
 standardise_returns: False
 standardise_rewards: True
-
+agent: "flat_const_agent"
 hidden_dim: 64
 
 use_rnn: False
@@ -35,13 +35,13 @@ critic_train_mode: "seq"
 critic_train_reps: 1
 entropy_coef: 0.001
 q_nstep: 10  # 0 corresponds to default Q, 1 is r + gamma*Q, etc
-critic_type: coma_critic
+critic_type: filtered_coma_critic
 
 name: "coma"
 
 #Behavior cloning properties
-use_bc: True
-buffer_size: 1000 #size of the buffer to use for behavior cloning
+use_bc: False
+buffer_size: 16 #size of the buffer to use for behavior cloning
 offline_dataset_path: null #path to the offline dataset
 pretrain_batches: 1000 #Episodes to train on provided replay buffer (100000 pretraining)
 pretrain_batch_size_run: 2 #this seems like the sweet spot for n=324, m=450

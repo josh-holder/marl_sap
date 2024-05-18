@@ -211,7 +211,7 @@ def run_sequential(args, logger):
     # ~~~~~~~~~~~~~~~ COMPLETE PRETRAINING (BC or offline RL) IF DESIRED ~~~~~~~~~~~~~~~
     episode = 0
     last_test_T = -args.test_interval - 1
-    # last_test_T = 0 #changing this for now so we get into training quicker
+    last_test_T = 0 #changing this for now so we get into training quicker
     last_log_T = 0
     model_save_time = 0
 
@@ -258,7 +258,7 @@ def run_sequential(args, logger):
                 episode_sample.to(args.device)
 
             learner.train(episode_sample, runner.t_env, episode)
-            # print("Training time: ", time.time() - st)
+            print("Training time: ", time.time() - st)
 
         # Execute test runs once in a while
         n_test_runs = max(1, args.test_nepisode // runner.batch_size)

@@ -3,13 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class COMACritic(nn.Module):
+class FilteredCOMACritic(nn.Module):
     def __init__(self, scheme, args):
-        super(COMACritic, self).__init__()
+        super(FilteredCOMACritic, self).__init__()
 
         self.args = args
         self.m = args.m
         self.n = args.n
+        self.M = args.env_args["M"]
 
         self.scheme = scheme
         self.input_shape = self._get_input_shape(scheme)
@@ -18,9 +19,10 @@ class COMACritic(nn.Module):
         # Set up network layers
         self.fc1 = nn.Linear(self.input_shape, args.hidden_dim)
         self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
-        self.fc3 = nn.Linear(args.hidden_dim, self.m)
+        self.fc3 = nn.Linear(args.hidden_dim, self.M + 1)
 
     def forward(self, batch, t=None):
+        print(batch["actions_onehot"].shape)
         inputs = self._build_inputs(batch, t=t)
         x = F.relu(self.fc1(inputs))
         x = F.relu(self.fc2(x))
@@ -44,13 +46,15 @@ class COMACritic(nn.Module):
         if self.args.obs_individual_obs:
             inputs.append(batch["obs"][:, ts])
 
+        # NEED TO FIGURE OUT HOW TO ONLY GET ACTIONS OF TOP N AGENTS
         # actions (masked out by agent)
-        print(batch["actions_onehot"].shape)
+        print("actions_onehot shape: ", batch["actions_onehot"].shape)
+        print("actions onehot view shape:", batch["actions_onehot"][:, ts].view(bs, max_t, 1, -1).shape)
         actions = batch["actions_onehot"][:, ts].view(bs, max_t, 1, -1).repeat(1, 1, self.n, 1)
+        print("actions shape: ", actions.shape)
         agent_mask = (1 - th.eye(self.n, device=batch.device))
         agent_mask = agent_mask.view(-1, 1).repeat(1, self.m).view(self.n, -1)
         inputs.append(actions * agent_mask.unsqueeze(0).unsqueeze(0))
-        print((actions * agent_mask.unsqueeze(0).unsqueeze(0)).shape)
 
         # last actions
         if self.args.obs_last_action:

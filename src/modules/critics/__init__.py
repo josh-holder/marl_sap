@@ -1,4 +1,5 @@
 from .coma import COMACritic
+from .filtered_coma import FilteredCOMACritic
 from .centralV import CentralVCritic
 from .coma_ns import COMACriticNS
 from .centralV_ns import CentralVCriticNS
@@ -10,6 +11,7 @@ from .pac_ac_ns import PACCriticNS
 REGISTRY = {}
 
 REGISTRY["coma_critic"] = COMACritic
+REGISTRY["filtered_coma_critic"] = FilteredCOMACritic
 REGISTRY["cv_critic"] = CentralVCritic
 REGISTRY["coma_critic_ns"] = COMACriticNS
 REGISTRY["cv_critic_ns"] = CentralVCriticNS

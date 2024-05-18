@@ -3,6 +3,7 @@ from .filtered_q_learner import FilteredQLearner
 from .sap_q_learner import SAPQLearner
 from .filtered_sap_q_learner import FilteredSAPQLearner
 from .coma_learner import COMALearner
+from .filtered_coma_learner import FilteredCOMALearner
 from .qtran_learner import QLearner as QTranLearner
 from .actor_critic_learner import ActorCriticLearner
 from .actor_critic_pac_learner import PACActorCriticLearner
@@ -18,6 +19,7 @@ REGISTRY["filtered_q_learner"] = FilteredQLearner
 REGISTRY["sap_q_learner"] = SAPQLearner
 REGISTRY["filtered_sap_q_learner"] = FilteredSAPQLearner
 REGISTRY["coma_learner"] = COMALearner
+REGISTRY["filtered_coma_learner"] = FilteredCOMALearner
 REGISTRY["qtran_learner"] = QTranLearner
 REGISTRY["actor_critic_learner"] = ActorCriticLearner
 REGISTRY["maddpg_learner"] = MADDPGLearner

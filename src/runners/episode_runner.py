@@ -60,7 +60,7 @@ class EpisodeRunner:
     def run(self, test_mode=False):
         st = time.time()
         self.reset() #empty batch, reset environment, t=0
-        # print(f"Reset time: {time.time() - st}")
+        print(f"Reset time: {time.time() - st}")
         terminated = False
         episode_return = 0
         #Initialize RNN hidden state for each agent
@@ -93,7 +93,7 @@ class EpisodeRunner:
             self.batch.update(post_transition_data, ts=self.t)
 
             self.t += 1
-        # print(f"Time to run env and choose actions: {time.time() - st}")
+        print(f"Time to run env and choose actions: {time.time() - st}")
         last_data = self.env.get_pretransition_data()
         if test_mode and self.args.render:
             print(f"Episode return: {episode_return}")

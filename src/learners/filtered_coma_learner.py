@@ -8,11 +8,12 @@ from modules.critics import REGISTRY as critic_registry
 from components.standarize_stream import RunningMeanStd
 import numpy as np
 
-class COMALearner:
+class FilteredCOMALearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
         self.n = args.n
         self.m = args.m
+        self.M = args.env_args['M']
         self.mac = mac
         self.logger = logger
 
@@ -59,6 +60,9 @@ class COMALearner:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
 
+        total_beta = batch["beta"].float().sum(axis=-1)
+        top_agent_tasks = th.topk(total_beta, k=self.args.env_args['M'], dim=-1).indices
+
         critic_mask = mask.clone()
 
         mask = mask.repeat(1, 1, self.n).view(-1)
@@ -76,8 +80,8 @@ class COMALearner:
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
         # Calculated baseline
-        q_vals = q_vals.reshape(-1, self.m)
-        pi = mac_out.view(-1, self.m)
+        q_vals = q_vals.reshape(-1, self.M+1)
+        pi = mac_out.view(-1, self.M+1)
         baseline = (pi * q_vals).sum(-1).detach()
 
         # Calculate policy grad with mask
@@ -148,7 +152,7 @@ class COMALearner:
         elif beta.ndim == 5:
             beta = beta[:, :, :, :, 0]
         else:
-            raise ValueError("beta has unexpected shape.")
+            raise ValueError(f"beta has unexpected shape, {beta.shape}")
         
         batches = actions.shape[0]
         timesteps = actions.shape[1]
