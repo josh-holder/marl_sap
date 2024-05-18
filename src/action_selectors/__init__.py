@@ -3,7 +3,8 @@ REGISTRY = {}
 from .classic_selectors import MultinomialActionSelector, EpsilonGreedyActionSelector, SoftPoliciesSelector
 from .bet_selectors import ContinuousActionSelector
 from .sap_selectors import SequentialAssignmentProblemSelector, EpsilonGreedySAPTestActionSelector
-from .filtered_sap_selectors import FilteredSAPActionSelector, FilteredEpsGrSAPTestActionSelector, FilteredEpsilonGreedyActionSelector
+from .filtered_sap_selectors import FilteredSAPActionSelector, FilteredEpsGrSAPTestActionSelector
+from .filtered_classic_selectors import FilteredEpsilonGreedyActionSelector
 
 REGISTRY["continuous"] = ContinuousActionSelector
 REGISTRY["multinomial"] = MultinomialActionSelector
