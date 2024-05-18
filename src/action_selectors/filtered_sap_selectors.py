@@ -181,7 +181,7 @@ class FilteredEpsilonGreedyActionSelector():
 
         #General strategy: build a matrix where the default value is the baseline action benefit, then replace the M best actions with the M best Q-values.
         #Then select greedy actions from this matrix, unless the random number is under epsilon.
-        top_M_benefits_from_q_values = agent_inputs[:, :, :].detach().cpu()
+        top_M_benefits_from_q_values = agent_inputs[:, :, :].detach()
 
         #Pop the last column off of top_M_benefits_from_q_values
         baseline_action_benefit = top_M_benefits_from_q_values[:, :, -1]

@@ -312,9 +312,9 @@ class RealPowerConstellationEnv(Env):
         If initially has a time dimension, outputs a time_dim x n x m x L matrix.
         """
         #if beta or prev_assigns is a tensor, convert to numpy
-        if isinstance(beta, th.Tensor): beta = beta.numpy()
-        if isinstance(prev_assigns, th.Tensor): prev_assigns = prev_assigns.numpy()
-        if isinstance(power_states, th.Tensor): power_states = power_states.numpy()
+        if isinstance(beta, th.Tensor): beta = beta.cpu().numpy()
+        if isinstance(prev_assigns, th.Tensor): prev_assigns = prev_assigns.cpu().numpy()
+        if isinstance(power_states, th.Tensor): power_states = power_states.cpu().numpy()
         beta_init_dim = beta.ndim
         if beta_init_dim == 3:
             beta = np.expand_dims(beta, axis=0)
