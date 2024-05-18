@@ -307,18 +307,6 @@ def run_sequential(args, logger):
 
 def run_offline_rl_pretraining(args, logger, runner, buffer, learner,
                     last_test_T, last_log_T, model_save_time, episode):
-    #Train on the offline dataset.
-    logger.console_logger.info("Testing model before offline RL pretraining...")
-    n_test_runs = max(1, args.test_nepisode // runner.batch_size)
-    for _ in range(n_test_runs):
-        runner.run(test_mode=True)
-    if args.save_model:
-        save_path = os.path.join(
-                args.local_results_path, "models", args.unique_token, "-1"
-            )
-        os.makedirs(save_path, exist_ok=True)
-        logger.console_logger.info("Saving models to {}".format(save_path))
-
     pretrain_batches = 0
     while pretrain_batches < args.pretrain_batches:
         if (pretrain_batches % 50) == 0: logger.console_logger.info(f"Pretraining w offline RL, {pretrain_batches}/{args.pretrain_batches}")
