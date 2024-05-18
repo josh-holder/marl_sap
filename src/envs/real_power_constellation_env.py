@@ -204,29 +204,29 @@ class RealPowerConstellationEnv(Env):
             observations = []
 
             total_beta = self.beta.sum(axis=-1)
-
-            top_agent_tasks = np.argsort(-total_beta)[:, :self.M]
-
-            #Get the local benefits
-            L = self.beta.shape[-1]
-            stacked_top_agent_tasks = np.stack((top_agent_tasks,)*L, axis=-1)
-            indices = np.indices(stacked_top_agent_tasks.shape)
-            local_benefits = self.beta[indices[0], stacked_top_agent_tasks, indices[2]]
-
             for i in range(self.n):
+                # ~~~ Get the local benefits for agent i ~~~
+                agent_benefits = self.beta[i,:,:]
+
+                total_agent_benefits = total_beta[i,:]
+
+                #find M max indices in total_agent_benefits
+                top_agent_tasks = np.argsort(-total_agent_benefits)[:self.M]
+                local_benefits = agent_benefits[top_agent_tasks, :]
+
                 #Determine the N agents who most directly compete with agent i
                 # (i.e. the N agents with the highest total benefit for the top M tasks)
-                total_benefits_for_top_M_tasks = total_beta[:, top_agent_tasks[i,:]]
+                total_benefits_for_top_M_tasks = total_beta[:, top_agent_tasks]
                 best_task_benefit_by_agent = np.max(total_benefits_for_top_M_tasks, axis=1)
                 best_task_benefit_by_agent[i] = -np.inf #set agent i to a really low value so it doesn't show up in the sort
                 top_n = np.argsort(-best_task_benefit_by_agent)[:self.N]
 
                 # ~~~ Get the neighboring benefits for agent i ~~~
-                neighboring_benefits = self.beta[top_n[:, np.newaxis], top_agent_tasks[i,:], :]
+                neighboring_benefits = self.beta[top_n[:, np.newaxis], top_agent_tasks, :]
 
                 # ~~~ Get the global benefits for agent i ~~~
                 total_benefits_without_top_M_tasks = np.copy(total_beta)
-                total_benefits_without_top_M_tasks[:, top_agent_tasks[i,:]] = -np.inf
+                total_benefits_without_top_M_tasks[:, top_agent_tasks] = -np.inf
 
                 top_n_total_benefits_without_top_M_tasks = total_benefits_without_top_M_tasks[top_n, :]
                 #take the top M//2 entries from every row
@@ -235,7 +235,7 @@ class RealPowerConstellationEnv(Env):
                 neighboring_other_benefits = self.beta[top_n[:, np.newaxis], top_n_top_M_2_other_benefit_indices, :]
 
                 # ~~~ Get agent previous assigns ~~~
-                agent_assigns_obs = np.where(top_agent_tasks[i,:] == self.prev_assigns[i], 1, 0)
+                agent_assigns_obs = np.where(top_agent_tasks == self.prev_assigns[i], 1, 0)
 
                 # ~~~ Get N power states ~~~
                 agent_power_state_obs = np.zeros(self.N+1)
@@ -243,7 +243,7 @@ class RealPowerConstellationEnv(Env):
                 agent_power_state_obs[1:] = self.power_states[top_n]
 
                 #flatten local_benefits, neighboring_benefits, and neighboring_other_benefits
-                observations.append(np.concatenate((local_benefits[i,:,:].flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), 
+                observations.append(np.concatenate((local_benefits.flatten(), neighboring_benefits.flatten(), neighboring_other_benefits.flatten(), 
                                                     agent_assigns_obs, agent_power_state_obs)))
         else: #otherwise, if done there are no benefits to observe. (and no actions either, because we can't do filtering based on them.)
             self.beta = np.zeros((self.n, self.m, self.L))

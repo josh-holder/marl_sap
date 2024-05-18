@@ -51,8 +51,9 @@ label: "default_label"
 hypergroup: null
 
 # --- Pretraining configs ---
-offline_dataset: null
+use_bc: False # Use behavioral cloning
+use_offline_rl: False # Use offline RL
 offline_dataset_path: null
-pretrain_fn: null
+pretrain_fn: "haa_selector"
 pretrain_batch_size_run: 2 #this seems like the sweet spot for n=100, m=150
 pretrain_batches: 1000 #Steps to train on provided replay buffer

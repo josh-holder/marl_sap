@@ -217,7 +217,7 @@ class ParallelRunner:
         cur_stats["ep_length"] = sum(episode_lengths) + cur_stats.get("ep_length", 0)
 
         cur_returns.extend(episode_returns)
-
+        if test_mode: print(f"Episode return: {episode_returns[0]}")
         if not test_mode:
             self.t_env += self.env_steps_this_run
 
