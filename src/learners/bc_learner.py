@@ -71,7 +71,6 @@ class BCLearner:
 
         self.agent_optimiser.zero_grad()
         actor_loss.backward()
-
         grad_norm = th.nn.utils.clip_grad_norm_(self.agent_params, self.args.grad_norm_clip)
         self.agent_optimiser.step()
 

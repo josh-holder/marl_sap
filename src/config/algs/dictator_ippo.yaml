@@ -7,7 +7,6 @@ mask_before_softmax: True
 # batch_size: 32
 
 runner: "parallel"
-buffer_size: 10
 batch_size_run: 10
 batch_size: 10
 
@@ -37,7 +36,7 @@ t_max: 50000
 
 #Behavior cloning properties
 use_bc: True
-buffer_size: 100 #size of the buffer to use for behavior cloning
+buffer_size: 1000 #size of the buffer to use for behavior cloning
 offline_dataset_path: "dictator_data" #path to the offline dataset
-pretrain_batches: 500 #Episodes to train on provided replay buffer
+pretrain_batches: 1000 #Episodes to train on provided replay buffer (match 10000 exploration steps for REDA and IQL)
 pretrain_batch_size_run: 2 #this seems like the sweet spot for n=324, m=450
