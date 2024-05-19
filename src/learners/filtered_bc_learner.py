@@ -78,7 +78,6 @@ class FilteredBCLearner:
             agent_outs = self.mac.forward(batch, t=t)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out[:-1], dim=1)  # Concat over time
-        print("MO", mac_out.shape, top_Mp1_actions.shape)
         #Reshape mac_out to be (batch_size, self.m, ts, self.n)
         mac_out = mac_out.permute(0, 3, 1, 2)
 
@@ -205,7 +204,6 @@ class FilteredBCLearner:
         return q_vals
 
     def nstep_returns(self, rewards, mask, values, nsteps):
-        print("R", rewards.shape, mask.shape, values.shape, nsteps)
         nstep_values = th.zeros_like(values[:, :-1])
         for t_start in range(rewards.size(1)):
             nstep_return_t = th.zeros_like(values[:, 0])
