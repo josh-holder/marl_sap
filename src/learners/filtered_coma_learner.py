@@ -14,6 +14,7 @@ class FilteredCOMALearner:
         self.n = args.n
         self.m = args.m
         self.M = args.env_args['M']
+        self.N = args.env_args['N']
         self.mac = mac
         self.logger = logger
 
@@ -41,34 +42,87 @@ class FilteredCOMALearner:
         if self.args.standardise_returns:
             self.ret_ms = RunningMeanStd(shape=(self.n,), device=device)
 
+        # in filtered COMA, each agent does have their own specific rewards because they get rewarded based on their neighborhood
         if self.args.standardise_rewards:
-            self.rew_ms = RunningMeanStd(shape=(1,), device=device)
+            self.rew_ms = RunningMeanStd(shape=(self.n,), device=device)
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
         bs = batch.batch_size
         max_t = batch.max_seq_length
         rewards = batch["rewards"][:, :-1].float()
-        rewards = rewards.sum(dim=-1, keepdim=True) #COMA, so using shared rewards. reward should then be sum of all rewards from all agents
         actions = batch["actions"][:, :].to(th.int64)
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
         avail_actions = batch["avail_actions"][:, :-1].to(th.int64)
 
+        total_beta = batch["beta"].float().sum(axis=-1)
+        top_agent_tasks = th.topk(total_beta, k=self.M, dim=-1).indices
+
+        neighboring_rewards = th.zeros((bs, max_t, self.n), device=self.args.device)
+        neighbors = th.zeros((bs, max_t, self.n, self.N), device=self.args.device, dtype=th.long) #neighbors for each agent at each timestep
+        #Each agent gets the rewards from the sum of the neighboring N agents
+        for i in range(self.n):
+            #find M max indices in total_agent_benefits
+            top_agenti_tasks = top_agent_tasks[:,:,i,:] # b x t x M
+            top_agenti_tasks_expanded = top_agenti_tasks.unsqueeze(2).repeat(1,1,self.n,1) # b x t x n x M
+
+            #Determine the N agents who most directly compete with agent i
+            # (i.e. the N agents with the highest total benefit for the top M tasks)
+            top_M_indices = np.indices(top_agenti_tasks_expanded.shape)
+            total_benefits_for_top_M_tasks = total_beta[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_agenti_tasks_expanded] # b x t x n x M
+            best_task_benefit_by_agent, _ = th.max(total_benefits_for_top_M_tasks, dim=-1) # b x t x n
+            best_task_benefit_by_agent[:, :, i] = -th.inf #set agent i to a really low value so it doesn't show up in the sort
+            top_N = th.topk(best_task_benefit_by_agent, k=self.N, dim=-1).indices # b x t x N (N agents which have the highest value for a task in the top M for agent i)
+
+            top_N_indices = np.indices(top_N.shape)
+            neighboring_rewards[:, :, i] = rewards[top_N_indices[0], top_N_indices[1], top_N].sum(axis=-1)
+            neighbors[:,:,i,:] = top_N
+
+            # if i == 0:
+            #     for n in range(self.N):
+            #         nn = top_N[0,0,n].item()
+            #         print("agent ", nn, best_task_benefit_by_agent[0,0,nn])
+            #     print("top agent 0 tasks", top_agent_tasks[0,0,0,:])
+            #     print("agent 0 neighbors", top_N[0,0,:])
+            #     print("best_task_benefits", best_task_benefit_by_agent[0,0,top_N[0,0,:]])
+            #     print("best_real_task_ben", best_task_benefit_by_agent[0,0,top_N[0,0,:]][0])
+
+        # # no loop test
+        # top_agent_tasks_expanded = top_agent_tasks.unsqueeze(3).repeat(1,1,1,self.n,1) # b x t x n x n x M
+        
+        # total_beta_expanded = total_beta.unsqueeze(3).repeat(1, 1, 1, self.n, 1) # b x t x n x n x m
+        # top_M_indices = np.indices(top_agent_tasks_expanded.shape)
+        # total_benefits_for_top_M_tasks = total_beta_expanded[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_M_indices[3], top_agent_tasks_expanded] # b x t x n x n x M
+        # same_agent_mask = th.eye(self.n, device=self.args.device).unsqueeze(0).unsqueeze(0).unsqueeze(-1).repeat(bs, max_t-1, 1, 1, self.M)
+        # total_benefits_for_top_M_tasks -= 10000*same_agent_mask #set the agents values for themselves to a really low value so they don't show up in the sort
+
+        # best_task_benefit_by_agent, _ = th.max(total_benefits_for_top_M_tasks, dim=-1) # b x t x n x n
+        # neighbors2 = th.topk(best_task_benefit_by_agent, k=self.N, dim=-1).indices # b x t x n x N
+
+        # print("top agent 0 tasks", top_agent_tasks[0,0,0,:])
+        # print("agent 0 neighbors", neighbors2[0,0,0,:])
+        # print("best_task_benefits", best_task_benefit_by_agent[0,0,0,neighbors2[0,0,0,:]])
+
+        # neighbor_indices = np.indices(neighbors2.shape)
+        # rewards_expanded = rewards.unsqueeze(3).repeat(1, 1, 1, self.n) # b x t x n x n
+        # neighboring_rewards2 = rewards_expanded[neighbor_indices[0], neighbor_indices[1], neighbor_indices[2], neighbors2].sum(axis=-1)
+        
+
+        # print("close r", th.allclose(neighboring_rewards, neighboring_rewards2))
+        # print("close n", th.allclose(neighbors, neighbors2))
+
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
-
-        total_beta = batch["beta"].float().sum(axis=-1)
-        top_agent_tasks = th.topk(total_beta, k=self.args.env_args['M'], dim=-1).indices
 
         critic_mask = mask.clone()
 
         mask = mask.repeat(1, 1, self.n).view(-1)
 
         q_vals, critic_train_stats = self._train_critic(batch, rewards, terminated, actions, avail_actions,
-                                                        critic_mask, bs, max_t)
+                                                        critic_mask, bs, max_t, neighbors, top_agent_tasks)
 
         actions = actions[:,:-1]
 
@@ -82,7 +136,7 @@ class FilteredCOMALearner:
         # Calculated baseline
         q_vals = q_vals.reshape(-1, self.M+1)
         pi = mac_out.view(-1, self.M+1)
-        baseline = (pi * q_vals).sum(-1).detach()
+        baseline = (pi * q_vals).sum(-1).detach() #expected value of all Q-values
 
         # Calculate policy grad with mask
         q_taken = th.gather(q_vals, dim=1, index=actions.reshape(-1, 1)).squeeze(1)
@@ -166,10 +220,11 @@ class FilteredCOMALearner:
                 
         return total_benefit/batches/timesteps/self.n
 
-    def _train_critic(self, batch, rewards, terminated, actions, avail_actions, mask, bs, max_t):
+    def _train_critic(self, batch, rewards, terminated, actions, avail_actions, mask, bs, max_t, 
+                      neighbors, top_agent_tasks):
         # Optimise critic
         with th.no_grad():
-            target_q_vals = self.target_critic(batch)
+            target_q_vals = self.target_critic(batch, neighbors, top_agent_tasks)
 
         targets_taken = th.gather(target_q_vals, dim=3, index=actions).squeeze(3)
 
@@ -191,7 +246,7 @@ class FilteredCOMALearner:
         }
 
         actions = actions[:, :-1]
-        q_vals = self.critic(batch)[:, :-1]
+        q_vals = self.critic(batch, neighbors, top_agent_tasks)[:, :-1]
         q_taken = th.gather(q_vals, dim=3, index=actions).squeeze(3)
 
         td_error = (q_taken - targets.detach())

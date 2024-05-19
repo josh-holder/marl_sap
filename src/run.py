@@ -146,6 +146,8 @@ def run_sequential(args, logger):
             logger.console_logger.info("Offline dataset provided: loading from {}".format(args.offline_dataset_path))
             with open(f"datasets/{args.offline_dataset_path}.pkl", 'rb') as f:
                 buffer = pickle.load(f)
+
+            print("Buffer keys:", buffer.scheme.keys())
             logger.console_logger.info("Done loading offline dataset.")
 
     # ~~~~~~~~~~~~~~~~ SET UP MAC, LEARNER ~~~~~~~~~~~~~~~~
@@ -211,7 +213,7 @@ def run_sequential(args, logger):
     # ~~~~~~~~~~~~~~~ COMPLETE PRETRAINING (BC or offline RL) IF DESIRED ~~~~~~~~~~~~~~~
     episode = 0
     last_test_T = -args.test_interval - 1
-    last_test_T = 0 #changing this for now so we get into training quicker
+    # last_test_T = 0 #changing this for now so we get into training quicker
     last_log_T = 0
     model_save_time = 0
 

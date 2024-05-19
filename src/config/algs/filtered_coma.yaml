@@ -5,7 +5,7 @@ mask_before_softmax: True
 
 runner: "episode"
 
-batch_size: 16
+batch_size: 5
 
 # update the target network every {} training steps
 target_update_interval_or_tau: 200
@@ -40,8 +40,8 @@ critic_type: filtered_coma_critic
 name: "coma"
 
 #Behavior cloning properties
-use_bc: False
-buffer_size: 16 #size of the buffer to use for behavior cloning
-offline_dataset_path: null #path to the offline dataset
+use_bc: True
+buffer_size: 1000 #size of the buffer to use for behavior cloning
+offline_dataset_path: "n324m450" #path to the offline dataset
 pretrain_batches: 1000 #Episodes to train on provided replay buffer (100000 pretraining)
 pretrain_batch_size_run: 2 #this seems like the sweet spot for n=324, m=450

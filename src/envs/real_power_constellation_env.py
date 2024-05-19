@@ -216,6 +216,9 @@ class RealPowerConstellationEnv(Env):
 
                 #Determine the N agents who most directly compete with agent i
                 # (i.e. the N agents with the highest total benefit for the top M tasks)
+                # NOTE: if there are not M meaningful tasks, regardless some of the top N agents might be some agents which can only complete the irrelevant tasks. 
+                # thus, the observation might not contain information about the tasks that are truly the most meaningful. However, as there are more satellites and tasks,
+                # more of the top M tasks will be completable and everything will be more meaningful.
                 total_benefits_for_top_M_tasks = total_beta[:, top_agent_tasks]
                 best_task_benefit_by_agent = np.max(total_benefits_for_top_M_tasks, axis=1)
                 best_task_benefit_by_agent[i] = -np.inf #set agent i to a really low value so it doesn't show up in the sort

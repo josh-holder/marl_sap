@@ -45,7 +45,6 @@ class ActorCriticLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-
         rewards = batch["rewards"][:, :-1]
         actions = batch["actions"][:, :]
         terminated = batch["terminated"][:, :-1].float()

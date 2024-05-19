@@ -195,13 +195,11 @@ class BCLearner:
             target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
     def mps(self):
-        self.old_mac.agent.to("mps")
         self.mac.agent.to("mps")
         self.critic.to("mps")
         self.target_critic.to("mps")
 
     def cuda(self):
-        self.old_mac.cuda()
         self.mac.cuda()
         self.critic.cuda()
         self.target_critic.cuda()
