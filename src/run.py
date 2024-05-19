@@ -383,7 +383,9 @@ def run_behavior_cloning_pretraining(args, logger, runner, buffer, learner,
 
         epochs = getattr(args, "epochs", 1) #if there are no epochs, usually there is one grad update for each batch
 
+        st = time.time()
         learner.train(episode_sample, 0, episode_num=0)
+        print(f"Pretrain training time: {time.time()-st}")
         pretrain_batches += args.batch_size_run // epochs
 
         #Increment runner t_env to simulate the number of environment steps
