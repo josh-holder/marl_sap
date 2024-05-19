@@ -68,7 +68,10 @@ class FilteredBCLearner:
 
         top_M_indices = np.indices(top_agent_tasks.shape)
         top_M_actions_onehot = actions_one_hot[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_agent_tasks]
-        top_Mp1_actions_onehot = th.stack()
+        print("top_M_actions_onehot", top_M_actions_onehot.shape)
+        did_agent_not_do_a_top_M_task = top_M_actions_onehot.sum(axis=-1) == 0
+        top_Mp1_actions_onehot = th.stack([top_M_actions_onehot, did_agent_not_do_a_top_M_task], dim=-1)
+        print("top_Mp1_actions_onehot", top_Mp1_actions_onehot.shape)
 
 
         mac_out = []
