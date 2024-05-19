@@ -147,7 +147,6 @@ def run_sequential(args, logger):
             with open(f"datasets/{args.offline_dataset_path}.pkl", 'rb') as f:
                 buffer = pickle.load(f)
 
-            print("Buffer keys:", buffer.scheme.keys())
             logger.console_logger.info("Done loading offline dataset.")
 
     # ~~~~~~~~~~~~~~~~ SET UP MAC, LEARNER ~~~~~~~~~~~~~~~~
