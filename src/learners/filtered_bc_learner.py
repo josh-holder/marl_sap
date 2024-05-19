@@ -56,7 +56,7 @@ class FilteredBCLearner:
         bs = batch.batch_size
         max_t = batch.max_seq_length
         # ~~~~~~~~~~~~ TRAIN ACTOR POLICY ~~~~~~~~~~~~
-        actions = batch["actions"][:, :].to(th.int64) # b x t x n x 1
+        actions = batch["actions"].to(th.int64) # b x t x n x 1
         # avail_actions = batch["avail_actions"][:, :-1].to(th.int64)
         avail_actions = th.ones((bs, max_t-1, self.n, self.M+1)) #hardcode all M+1 actions to be available
 
@@ -70,20 +70,20 @@ class FilteredBCLearner:
         top_M_actions_onehot = actions_one_hot[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_agent_tasks]
         did_agent_not_do_a_top_M_task = (top_M_actions_onehot.sum(axis=-1) == 0).unsqueeze(-1)
         top_Mp1_actions_onehot = th.cat([top_M_actions_onehot, did_agent_not_do_a_top_M_task], dim=-1)
-        top_Mp1_actions = th.argmax(top_Mp1_actions_onehot, dim=-1)
+        top_Mp1_actions = th.argmax(top_Mp1_actions_onehot, dim=-1).unsqueeze(-1) #to match the shape of original actions
 
         mac_out = []
         self.mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
             agent_outs = self.mac.forward(batch, t=t)
             mac_out.append(agent_outs)
-        mac_out = th.stack(mac_out, dim=1)  # Concat over time
-
+        mac_out = th.stack(mac_out[:-1], dim=1)  # Concat over time
+        print("MO", mac_out.shape, top_Mp1_actions.shape)
         #Reshape mac_out to be (batch_size, self.m, ts, self.n)
         mac_out = mac_out.permute(0, 3, 1, 2)
 
         actor_loss_fn = nn.CrossEntropyLoss()
-        actor_loss = actor_loss_fn(mac_out, top_Mp1_actions) #remove last dimension on actions
+        actor_loss = actor_loss_fn(mac_out, top_Mp1_actions[:,:-1].squeeze(-1)) #remove last dimension on actions
 
         self.agent_optimiser.zero_grad()
         actor_loss.backward()
@@ -98,9 +98,9 @@ class FilteredBCLearner:
 
         # ~~~~~~~~~~~~ TRAIN CRITIC ~~~~~~~~~~~~
         if self.args.learner == "filtered_coma_learner":
-            base_rewards = batch["rewards"][:, :].float() #NOTE: not :-1 for some reason
+            base_rewards = batch["rewards"][:, :-1].float()
             #Each agent gets the rewards from the sum of the neighboring N agents
-            rewards = th.zeros((bs, max_t, self.n), device=self.args.device)
+            rewards = th.zeros((bs, max_t-1, self.n), device=self.args.device)
             neighbors = th.zeros((bs, max_t, self.n, self.N), device=self.args.device, dtype=th.long) #neighbors for each agent at each timestep
             for i in range(self.n):
                 #find M max indices in total_agent_benefits
@@ -115,8 +115,8 @@ class FilteredBCLearner:
                 best_task_benefit_by_agent[:, :, i] = -th.inf #set agent i to a really low value so it doesn't show up in the sort
                 top_N = th.topk(best_task_benefit_by_agent, k=self.N, dim=-1).indices # b x t x N (N agents which have the highest value for a task in the top M for agent i)
 
-                top_N_indices = np.indices(top_N.shape)
-                rewards[:, :, i] = base_rewards[top_N_indices[0], top_N_indices[1], top_N].sum(axis=-1)
+                top_N_indices = np.indices(top_N[:,:-1].shape) #indexing rewards, so want it to be t-1 length
+                rewards[:, :, i] = base_rewards[top_N_indices[0], top_N_indices[1], top_N[:,:-1]].sum(axis=-1)
                 neighbors[:,:,i,:] = top_N
         else:
             rewards = batch["rewards"][:, :-1].float()
@@ -205,6 +205,7 @@ class FilteredBCLearner:
         return q_vals
 
     def nstep_returns(self, rewards, mask, values, nsteps):
+        print("R", rewards.shape, mask.shape, values.shape, nsteps)
         nstep_values = th.zeros_like(values[:, :-1])
         for t_start in range(rewards.size(1)):
             nstep_return_t = th.zeros_like(values[:, 0])
@@ -218,7 +219,6 @@ class FilteredBCLearner:
                     nstep_return_t += self.args.gamma ** (step) * rewards[:, t] * mask[:, t]
                     nstep_return_t += self.args.gamma ** (step + 1) * values[:, t + 1]
                 else:
-                    print()
                     nstep_return_t += self.args.gamma ** (step) * rewards[:, t] * mask[:, t]
             nstep_values[:, t_start, :] = nstep_return_t
         return nstep_values

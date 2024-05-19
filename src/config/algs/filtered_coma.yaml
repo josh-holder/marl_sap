@@ -42,9 +42,9 @@ name: "coma"
 #Behavior cloning properties
 use_bc: True
 buffer_size: 1000 #size of the buffer to use for behavior cloning
-offline_dataset_path: "n324m450" #path to the offline dataset
+offline_dataset_path: n324m450_small #path to the offline dataset
 pretrain_batches: 1000 #Episodes to train on provided replay buffer (100000 pretraining)
-pretrain_batch_size_run: 2 #this seems like the sweet spot for n=324, m=450
+pretrain_batch_size_run: 1 #this seems like the sweet spot for n=324, m=450
 
 save_model: true
 save_model_interval: 50000 # Save models after this many timesteps
