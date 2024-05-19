@@ -19,6 +19,7 @@ class FilteredBCLearner:
         self.n = args.n
         self.m = args.m
         self.M = args.env_args['M']
+        self.N = args.env_args['N']
         self.logger = logger
 
         self.mac = mac
@@ -46,8 +47,8 @@ class FilteredBCLearner:
             self.ret_ms = RunningMeanStd(shape=(self.n, ), device=device)
 
         if self.args.standardise_rewards:
-            if self.args.learner == "coma_learner":
-                self.rew_ms = RunningMeanStd(shape=(1,), device=device)
+            if self.args.learner == "filtered_coma_learner":
+                self.rew_ms = RunningMeanStd(shape=(self.n,), device=device)
             else:
                 self.rew_ms = RunningMeanStd(shape=(self.n,), device=device)
 
@@ -56,23 +57,20 @@ class FilteredBCLearner:
         max_t = batch.max_seq_length
         # ~~~~~~~~~~~~ TRAIN ACTOR POLICY ~~~~~~~~~~~~
         actions = batch["actions"][:, :].to(th.int64) # b x t x n x 1
-        print(actions.shape)
-        avail_actions = batch["avail_actions"][:, :-1].to(th.int64)
+        # avail_actions = batch["avail_actions"][:, :-1].to(th.int64)
+        avail_actions = th.ones((bs, max_t-1, self.n, self.M+1)) #hardcode all M+1 actions to be available
 
         # map actions to top M actions
         total_beta = batch["beta"].float().sum(axis=-1)
         top_agent_tasks = th.topk(total_beta, k=self.M, dim=-1).indices
 
         actions_one_hot = F.one_hot(actions.squeeze(-1), num_classes=self.m)
-        print("aoh", actions_one_hot.shape)
 
         top_M_indices = np.indices(top_agent_tasks.shape)
         top_M_actions_onehot = actions_one_hot[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_agent_tasks]
-        print("top_M_actions_onehot", top_M_actions_onehot.shape)
-        did_agent_not_do_a_top_M_task = top_M_actions_onehot.sum(axis=-1) == 0
-        top_Mp1_actions_onehot = th.stack([top_M_actions_onehot, did_agent_not_do_a_top_M_task], dim=-1)
-        print("top_Mp1_actions_onehot", top_Mp1_actions_onehot.shape)
-
+        did_agent_not_do_a_top_M_task = (top_M_actions_onehot.sum(axis=-1) == 0).unsqueeze(-1)
+        top_Mp1_actions_onehot = th.cat([top_M_actions_onehot, did_agent_not_do_a_top_M_task], dim=-1)
+        top_Mp1_actions = th.argmax(top_Mp1_actions_onehot, dim=-1)
 
         mac_out = []
         self.mac.init_hidden(batch.batch_size)
@@ -85,7 +83,7 @@ class FilteredBCLearner:
         mac_out = mac_out.permute(0, 3, 1, 2)
 
         actor_loss_fn = nn.CrossEntropyLoss()
-        actor_loss = actor_loss_fn(mac_out, actions.squeeze(-1)) #remove last dimension on actions
+        actor_loss = actor_loss_fn(mac_out, top_Mp1_actions) #remove last dimension on actions
 
         self.agent_optimiser.zero_grad()
         actor_loss.backward()
@@ -95,10 +93,31 @@ class FilteredBCLearner:
         if not self.args.use_mps_action_selection:
             self.mac.update_action_selector_agent()
 
+        total_beta = batch["beta"].float().sum(axis=-1)
+        top_agent_tasks = th.topk(total_beta, k=self.M, dim=-1).indices
+
         # ~~~~~~~~~~~~ TRAIN CRITIC ~~~~~~~~~~~~
-        if self.args.learner == "coma_learner":
-            rewards = batch["rewards"][:, :-1].float()
-            rewards = rewards.sum(dim=-1, keepdim=True) #COMA, so using shared rewards. reward should then be sum of all rewards from all agents
+        if self.args.learner == "filtered_coma_learner":
+            base_rewards = batch["rewards"][:, :].float() #NOTE: not :-1 for some reason
+            #Each agent gets the rewards from the sum of the neighboring N agents
+            rewards = th.zeros((bs, max_t, self.n), device=self.args.device)
+            neighbors = th.zeros((bs, max_t, self.n, self.N), device=self.args.device, dtype=th.long) #neighbors for each agent at each timestep
+            for i in range(self.n):
+                #find M max indices in total_agent_benefits
+                top_agenti_tasks = top_agent_tasks[:,:,i,:] # b x t x M
+                top_agenti_tasks_expanded = top_agenti_tasks.unsqueeze(2).repeat(1,1,self.n,1) # b x t x n x M
+
+                #Determine the N agents who most directly compete with agent i
+                # (i.e. the N agents with the highest total benefit for the top M tasks)
+                top_M_indices = np.indices(top_agenti_tasks_expanded.shape)
+                total_benefits_for_top_M_tasks = total_beta[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_agenti_tasks_expanded] # b x t x n x M
+                best_task_benefit_by_agent, _ = th.max(total_benefits_for_top_M_tasks, dim=-1) # b x t x n
+                best_task_benefit_by_agent[:, :, i] = -th.inf #set agent i to a really low value so it doesn't show up in the sort
+                top_N = th.topk(best_task_benefit_by_agent, k=self.N, dim=-1).indices # b x t x N (N agents which have the highest value for a task in the top M for agent i)
+
+                top_N_indices = np.indices(top_N.shape)
+                rewards[:, :, i] = base_rewards[top_N_indices[0], top_N_indices[1], top_N].sum(axis=-1)
+                neighbors[:,:,i,:] = top_N
         else:
             rewards = batch["rewards"][:, :-1].float()
         if self.args.standardise_rewards:
@@ -112,9 +131,9 @@ class FilteredBCLearner:
         critic_mask = mask.clone()
         mask = mask.repeat(1, 1, self.n).view(-1)
 
-        if self.args.learner == "coma_learner":
-            advantages = self._train_critic_coma(batch, rewards, terminated, actions, avail_actions,
-                                                        critic_mask, bs, max_t)
+        if self.args.learner == "filtered_coma_learner":
+            advantages = self._train_critic_coma(batch, rewards, terminated, top_Mp1_actions, avail_actions,
+                                                        critic_mask, bs, max_t, neighbors, top_agent_tasks)
         else:
             advantages = self._train_critic_standard(self.critic, self.target_critic, batch, rewards,
                                                                         critic_mask)
@@ -153,10 +172,11 @@ class FilteredBCLearner:
 
         return masked_td_error
     
-    def _train_critic_coma(self, batch, rewards, terminated, actions, avail_actions, mask, bs, max_t):
+    def _train_critic_coma(self, batch, rewards, terminated, actions, avail_actions, mask, bs, max_t,
+                           neighbors, top_agent_tasks):
         # Optimise critic
         with th.no_grad():
-            target_q_vals = self.target_critic(batch)
+            target_q_vals = self.target_critic(batch, neighbors, top_agent_tasks)
 
         targets_taken = th.gather(target_q_vals, dim=3, index=actions).squeeze(3)
 
@@ -170,7 +190,7 @@ class FilteredBCLearner:
             targets = (targets - self.ret_ms.mean) / th.sqrt(self.ret_ms.var)
 
         actions = actions[:, :-1]
-        q_vals = self.critic(batch)[:, :-1]
+        q_vals = self.critic(batch, neighbors, top_agent_tasks)[:, :-1]
         q_taken = th.gather(q_vals, dim=3, index=actions).squeeze(3)
 
         td_error = (q_taken - targets.detach())
@@ -198,6 +218,7 @@ class FilteredBCLearner:
                     nstep_return_t += self.args.gamma ** (step) * rewards[:, t] * mask[:, t]
                     nstep_return_t += self.args.gamma ** (step + 1) * values[:, t + 1]
                 else:
+                    print()
                     nstep_return_t += self.args.gamma ** (step) * rewards[:, t] * mask[:, t]
             nstep_values[:, t_start, :] = nstep_return_t
         return nstep_values
