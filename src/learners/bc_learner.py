@@ -95,10 +95,10 @@ class BCLearner:
         mask = mask.repeat(1, 1, self.n).view(-1)
 
         if self.args.learner == "coma_learner":
-            advantages = self._train_critic_coma(batch, rewards, terminated, actions, avail_actions,
+            advantages, critic_train_stats = self._train_critic_coma(batch, rewards, terminated, actions, avail_actions,
                                                         critic_mask, bs, max_t)
         else:
-            advantages = self._train_critic_standard(self.critic, self.target_critic, batch, rewards,
+            advantages, critic_train_stats = self._train_critic_standard(self.critic, self.target_critic, batch, rewards,
                                                                         critic_mask)
         
         self.critic_training_steps += 1
@@ -108,6 +108,21 @@ class BCLearner:
             self.last_target_update_step = self.critic_training_steps
         elif self.args.target_update_interval_or_tau <= 1.0:
             self._update_targets_soft(self.args.target_update_interval_or_tau)
+
+        if t_env - self.log_stats_t >= self.args.learner_log_interval:
+            ts_logged = len(critic_train_stats["critic_loss"])
+            for key in ["critic_loss", "critic_grad_norm", "td_error_abs", "q_taken_mean", "target_mean"]:
+                self.logger.log_stat(key, sum(critic_train_stats[key])/ts_logged, t_env)
+
+            self.logger.log_stat("advantage_mean", (advantages * mask).sum().item() / mask.sum().item(), t_env)
+            self.logger.log_stat("agent_grad_norm", grad_norm.item(), t_env)
+            self.log_stats_t = t_env
+
+            avg_num_conflicts = self.calc_conflicting_actions(actions)
+            self.logger.log_stat("avg_num_conflicts", avg_num_conflicts, t_env)
+
+            avg_beta = self.calc_raw_benefits(batch["beta"], actions)
+            self.logger.log_stat("avg_beta", avg_beta, t_env)
 
     def _train_critic_standard(self, critic, target_critic, batch, rewards, mask):
         # Optimise critic
@@ -123,6 +138,14 @@ class BCLearner:
             self.ret_ms.update(target_returns)
             target_returns = (target_returns - self.ret_ms.mean) / th.sqrt(self.ret_ms.var)
 
+        running_log = {
+            "critic_loss": [],
+            "critic_grad_norm": [],
+            "td_error_abs": [],
+            "target_mean": [],
+            "q_taken_mean": [],
+        }
+
         v = critic(batch)[:, :-1].squeeze(3)
         td_error = (target_returns.detach() - v)
         masked_td_error = td_error * mask
@@ -133,7 +156,14 @@ class BCLearner:
         grad_norm = th.nn.utils.clip_grad_norm_(self.critic_params, self.args.grad_norm_clip)
         self.critic_optimiser.step()
 
-        return masked_td_error
+        running_log["critic_loss"].append(loss.item())
+        running_log["critic_grad_norm"].append(grad_norm.item())
+        mask_elems = mask.sum().item()
+        running_log["td_error_abs"].append((masked_td_error.abs().sum().item() / mask_elems))
+        running_log["q_taken_mean"].append((v * mask).sum().item() / mask_elems)
+        running_log["target_mean"].append((target_returns * mask).sum().item() / mask_elems)
+
+        return masked_td_error, running_log
     
     def _train_critic_coma(self, batch, rewards, terminated, actions, avail_actions, mask, bs, max_t):
         # Optimise critic
@@ -151,6 +181,14 @@ class BCLearner:
             self.ret_ms.update(targets)
             targets = (targets - self.ret_ms.mean) / th.sqrt(self.ret_ms.var)
 
+        running_log = {
+            "critic_loss": [],
+            "critic_grad_norm": [],
+            "td_error_abs": [],
+            "target_mean": [],
+            "q_taken_mean": [],
+        }
+
         actions = actions[:, :-1]
         q_vals = self.critic(batch)[:, :-1]
         q_taken = th.gather(q_vals, dim=3, index=actions).squeeze(3)
@@ -164,7 +202,14 @@ class BCLearner:
         grad_norm = th.nn.utils.clip_grad_norm_(self.critic_params, self.args.grad_norm_clip)
         self.critic_optimiser.step()
 
-        return q_vals
+        running_log["critic_loss"].append(loss.item())
+        running_log["critic_grad_norm"].append(grad_norm.item())
+        mask_elems = mask.sum().item()
+        running_log["td_error_abs"].append((masked_td_error.abs().sum().item() / mask_elems))
+        running_log["q_taken_mean"].append((q_taken * mask).sum().item() / mask_elems)
+        running_log["target_mean"].append((targets * mask).sum().item() / mask_elems)
+
+        return q_vals, running_log
 
     def nstep_returns(self, rewards, mask, values, nsteps):
         nstep_values = th.zeros_like(values[:, :-1])
@@ -193,6 +238,42 @@ class BCLearner:
     def _update_targets_soft(self, tau):
         for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
             target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+    def calc_conflicting_actions(self, actions):
+        batches = actions.shape[0]
+        timesteps = actions.shape[1]
+
+        num_duplicates = 0
+        for b in range(batches):
+            for k in range(timesteps):
+                num_times_done = np.zeros(self.m)
+                for i in range(self.n):
+                    chosen_action = actions[b, k, i, 0].item()
+                    num_times_done[chosen_action] += 1
+                
+                num_duplicates += np.where(num_times_done > 0, num_times_done - 1, 0).sum()
+
+        return num_duplicates/batches/timesteps
+
+    def calc_raw_benefits(self, beta, actions):
+        if beta.ndim == 4:
+            pass
+        elif beta.ndim == 5:
+            beta = beta[:, :, :, :, 0]
+        else:
+            raise ValueError(f"beta has unexpected shape, {beta.shape}")
+        
+        batches = actions.shape[0]
+        timesteps = actions.shape[1]
+
+        total_benefit = 0
+        for b in range(batches):
+            for k in range(timesteps):
+                for i in range(self.n):
+                    chosen_action = actions[b, k, i, 0].item()
+                    total_benefit += beta[b, k, i, chosen_action]
+                
+        return total_benefit/batches/timesteps/self.n
 
     def mps(self):
         self.mac.agent.to("mps")
