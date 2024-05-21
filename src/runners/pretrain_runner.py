@@ -36,7 +36,7 @@ class PretrainRunner:
         self.T = self.args.env_args["T"]
 
         self.t = 0
-        self.b = 0
+        self.b = buffer.buffer_size
 
         self.buffer = buffer
 

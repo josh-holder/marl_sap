@@ -78,7 +78,9 @@ class FilteredBCLearner:
             agent_outs = self.mac.forward(batch, t=t)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out[:-1], dim=1)  # Concat over time
-        #Reshape mac_out to be (batch_size, self.m, ts, self.n)
+
+        print("chosen action probs, ", mac_out[0,0,0,:], "chosen action, ", top_Mp1_actions[0,0,0,:])
+        #Reshape mac_out to be (batch_size, self.M+1, ts, self.n)
         mac_out = mac_out.permute(0, 3, 1, 2)
 
         actor_loss_fn = nn.CrossEntropyLoss()

@@ -13,6 +13,7 @@ from controllers.basic_controller import BasicMAC
 from envs.mock_constellation_env import generate_benefits_over_time, MockConstellationEnv
 from envs.power_constellation_env import PowerConstellationEnv
 from envs.real_constellation_env import RealConstellationEnv
+from envs.real_power_constellation_env import RealPowerConstellationEnv
 
 from algorithms.solve_w_haal import solve_w_haal
 from algorithms.solve_randomly import solve_randomly
@@ -57,7 +58,7 @@ def test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items
 def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=None, verbose=False):
     params = [
         'src/main.py',
-        '--config=reda_sap',
+        '--config=filtered_reda',
         f'--env-config={env_str}',
         'with',
         'test_nepisode=1',
@@ -499,44 +500,24 @@ def large_real_test():
     N = 10
     M = 10
 
-    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
-    sat_prox_mat = const.get_proximities_for_random_tasks(m)
+    total_haal = 0
+    total_haa = 0
 
-    env = RealConstellationEnv(num_planes, num_sats_per_plane, m, N, M, L, T, lambda_, sat_prox_mat=sat_prox_mat, graphs=const.graphs)
-    env.reset()
+    num_tests = 5
+    for _ in range(num_tests):
+        print("TEST ",_)
+        env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_)
+        env.reset()
+        
+        haal3_assigns, haal3_val = test_classic_algorithms('haal_selector', 'dictator_env', env.sat_prox_mat, verbose=True)
+        total_haal += haal3_val
+
+        haa_assigns, haa_val = test_classic_algorithms('haa_selector', 'dictator_env', env.sat_prox_mat)
+        total_haa += haa_val
     
-    reda_assigns, reda_val = test_rl_model('reda_sap', 'real_constellation_env', '/Users/joshholder/code/marl_sap/results/models/large_real_no_power', sat_prox_mat)
-    print('REDA:', reda_val)
+    print('HAAL:', total_haal / num_tests)
+    print('HAA:', total_haa / num_tests)
 
-    simple_env = SimpleAssignEnv(sat_prox_mat, None, lambda_)
-    simple_env.reset()
-    _, old_haal_val = solve_w_haal(simple_env, L, verbose=False)
-    print('Old HAAL:', old_haal_val)
-    
-    haal3_assigns, haal3_val = test_classic_algorithms('haal_selector', 'real_constellation_env', sat_prox_mat)
-    print(f'HAAL, L={L}:', haal3_val)
-
-    haal1_assigns, haal1_val = test_classic_algorithms('haal_selector', 'real_constellation_env', sat_prox_mat, {'env_args': {'L': 1}})
-    print(f'HAAL, L={1}:', haal1_val)
-
-    haa_assigns, haa_val = test_classic_algorithms('haa_selector', 'real_constellation_env', sat_prox_mat)
-    print('HAA:', haa_val)
-
-    simple_env.reset()
-    greedy_assigns, greedy_val = solve_greedily(simple_env)
-    print('Greedy:', greedy_val)
-
-    values = [haal3_val, haal1_val, greedy_val, haa_val]
-    handovers = [calc_handovers_generically(a) for a in [haal3_assigns, haal1_assigns, greedy_assigns, haa_assigns]]
-    
-    alg_names = ['HAAL3', 'HAAL1', 'Greedy', 'HAA']
-    plt.bar(alg_names, values)
-    plt.ylabel('Value')
-    plt.show()
-
-    plt.bar(alg_names, handovers)
-    plt.ylabel('Handovers')
-    plt.show()
 
 if __name__ == "__main__":
     large_real_test()
