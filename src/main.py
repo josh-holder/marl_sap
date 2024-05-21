@@ -1,11 +1,9 @@
 import numpy as np
 import os
-import random
 import collections
 from os.path import dirname, abspath
 from copy import deepcopy
 from sacred import Experiment, SETTINGS
-from sacred.observers import FileStorageObserver, MongoObserver
 from sacred.utils import apply_backspaces_and_linefeeds
 import sys
 import torch as th
@@ -158,5 +156,4 @@ def experiment_run(params, explicit_dict_items=None, verbose=True):
 
 if __name__ == '__main__':
     params = deepcopy(sys.argv)
-
     experiment_run(params)
