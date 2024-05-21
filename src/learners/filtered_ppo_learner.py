@@ -6,16 +6,19 @@ from modules.critics.centralV import CentralVCritic
 from utils.rl_utils import build_td_lambda_targets
 import torch as th
 from torch.optim import Adam
+from torch.nn import functional as F
 from modules.critics import REGISTRY as critic_resigtry
 from components.standarize_stream import RunningMeanStd
 import numpy as np
 
 
-class PPOLearner:
+class FilteredPPOLearner:
     def __init__(self, mac, scheme, logger, args):
         self.args = args
         self.n = args.n
         self.m = args.m
+        self.M = args.env_args['M']
+        self.N = args.env_args['N']
         self.logger = logger
 
         self.mac = mac
@@ -48,17 +51,28 @@ class PPOLearner:
 
     def train(self, batch: EpisodeBatch, t_env: int, episode_num: int):
         # Get the relevant quantities
-
+        bs = batch.batch_size
+        max_t = batch.max_seq_length
         rewards = batch["rewards"][:, :-1].float()
         actions = batch["actions"][:, :].to(th.int64)
         terminated = batch["terminated"][:, :-1].float()
         mask = batch["filled"][:, :-1].float()
         mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
-        actions = actions[:, :-1]
         if self.args.standardise_rewards:
             self.rew_ms.update(rewards)
             rewards = (rewards - self.rew_ms.mean) / th.sqrt(self.rew_ms.var)
 
+        total_beta = batch["beta"].float().sum(axis=-1)
+        top_agent_tasks = th.topk(total_beta, k=self.M, dim=-1).indices
+
+        # map actions to top M actions
+        actions_one_hot = F.one_hot(actions.squeeze(-1), num_classes=self.m)
+
+        top_M_indices = np.indices(top_agent_tasks.shape)
+        top_M_actions_onehot = actions_one_hot[top_M_indices[0], top_M_indices[1], top_M_indices[2], top_agent_tasks]
+        did_agent_not_do_a_top_M_task = (top_M_actions_onehot.sum(axis=-1) == 0).unsqueeze(-1)
+        top_Mp1_actions_onehot = th.cat([top_M_actions_onehot, did_agent_not_do_a_top_M_task], dim=-1)
+        top_Mp1_actions = th.argmax(top_Mp1_actions_onehot, dim=-1).unsqueeze(-1) #to match the shape of original actions
 
         mask = mask.repeat(1, 1, self.n)
 
@@ -73,7 +87,7 @@ class PPOLearner:
         old_pi = old_mac_out
         old_pi[mask == 0] = 1.0
 
-        old_pi_taken = th.gather(old_pi, dim=3, index=actions).squeeze(3)
+        old_pi_taken = th.gather(old_pi, dim=3, index=top_Mp1_actions[:,:-1]).squeeze(3)
         old_log_pi_taken = th.log(old_pi_taken + 1e-10)
 
         for k in range(self.args.epochs):
@@ -92,7 +106,7 @@ class PPOLearner:
 
             pi[mask == 0] = 1.0
 
-            pi_taken = th.gather(pi, dim=3, index=actions).squeeze(3)
+            pi_taken = th.gather(pi, dim=3, index=top_Mp1_actions[:,:-1]).squeeze(3)
             log_pi_taken = th.log(pi_taken + 1e-10)
 
             ratios = th.exp(log_pi_taken - old_log_pi_taken.detach())

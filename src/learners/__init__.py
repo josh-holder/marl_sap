@@ -10,6 +10,7 @@ from .actor_critic_pac_learner import PACActorCriticLearner
 from .actor_critic_pac_dcg_learner import PACDCGLearner
 from .maddpg_learner import MADDPGLearner
 from .ppo_learner import PPOLearner
+from .filtered_ppo_learner import FilteredPPOLearner
 from .cont_ppo_learner import ContinuousPPOLearner
 from .bc_learner import BCLearner
 from .filtered_bc_learner import FilteredBCLearner
@@ -25,6 +26,7 @@ REGISTRY["qtran_learner"] = QTranLearner
 REGISTRY["actor_critic_learner"] = ActorCriticLearner
 REGISTRY["maddpg_learner"] = MADDPGLearner
 REGISTRY["ppo_learner"] = PPOLearner
+REGISTRY["filtered_ppo_learner"] = FilteredPPOLearner
 REGISTRY["cont_ppo_learner"] = ContinuousPPOLearner
 REGISTRY["pac_learner"] = PACActorCriticLearner
 REGISTRY["pac_dcg_learner"] = PACDCGLearner
