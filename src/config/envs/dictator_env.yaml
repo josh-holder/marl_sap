@@ -11,5 +11,6 @@ runner_log_interval: 2500
 learner_log_interval: 2500
 use_wandb: False
 wandb_run_name: null
+save_model_interval: 50000
 
 obs_agent_id: True #need to observe agent id bc not observing benefits

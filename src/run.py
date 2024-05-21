@@ -147,6 +147,13 @@ def run_sequential(args, logger):
             with open(f"datasets/{args.offline_dataset_path}.pkl", 'rb') as f:
                 buffer = pickle.load(f)
 
+            if buffer.buffer_size < args.buffer_size:
+                logger.console_logger.info("Offline dataset is smaller than desired buffer size: generating more data with {}".format(args.pretrain_fn))
+                pretrain_runner = PretrainRunner(args, logger, buffer, sample_env.scheme, groups)
+                buffer = pretrain_runner.fill_buffer()
+                with open(f"datasets/{args.unique_token}.pkl", 'wb') as f:
+                    pickle.dump(buffer, f)
+
             logger.console_logger.info("Done loading offline dataset.")
 
     # ~~~~~~~~~~~~~~~~ SET UP MAC, LEARNER ~~~~~~~~~~~~~~~~
@@ -391,8 +398,6 @@ def run_behavior_cloning_pretraining(args, logger, runner, buffer, learner,
         #If the data from the replay buffer is on CPU, move it to GPU
         if episode_sample.device != args.device:
             episode_sample.to(args.device)
-
-        epochs = getattr(args, "epochs", 1) #if there are no epochs, usually there is one grad update for each batch
 
         st = time.time()
         learner.train(episode_sample, 0, episode_num=0)
