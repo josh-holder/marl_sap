@@ -33,4 +33,4 @@ epochs: 4
 eps_clip: 0.2
 name: "filtered_ippo"
 
-t_max: 400000
+t_max: 500000

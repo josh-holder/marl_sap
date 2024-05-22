@@ -52,8 +52,10 @@ def test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items
     val = float(exp.result[1])
     actions = exp.result[0]
     assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in actions]
+
+    ps = exp.result[2]
     
-    return assigns, val
+    return assigns, val, ps
 
 def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=None, verbose=False):
     params = [
@@ -518,6 +520,92 @@ def large_real_test():
     print('HAAL:', total_haal / num_tests)
     print('HAA:', total_haa / num_tests)
 
+def qual_perf_compare():
+    num_planes = 18
+    num_sats_per_plane = 18
+    n = num_planes * num_sats_per_plane
+    m = 450
+    T = 90
+    L = 3
+    lambda_ = 0.5
+
+    reda_sat_ps = []
+    iql_sat_ps = []
+    haal_sat_ps = []
+    haa_sat_ps = []
+    ippo_sat_ps = []
+
+    for _ in range(1):
+        const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
+        sat_prox_mat = const.get_proximities_for_random_tasks(m)
+        explicit_dict_items = {
+            'env_args': {'sat_prox_mat': sat_prox_mat,
+                        'graphs': const.graphs,
+                        'T': T,
+                        }
+        }
+
+        # REDA
+        alg_str = 'filtered_reda'
+        env_str = 'real_power_constellation_env'
+        load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed952807856_2024-05-15 21:26:29.301905'
+        reda_assigns, reda_val, reda_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+
+        reda_sat_ps.append(np.sum(np.where(reda_ps > 0, 1, 0)) / 324)
+
+        # IQL
+        alg_str = 'filtered_iql'
+        env_str = 'real_power_constellation_env'
+        load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_iql_seed814515160_2024-05-17 01:23:22.125853'
+        iql_assigns, iql_val, iql_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+
+        iql_sat_ps.append(np.sum(np.where(iql_ps > 0, 1, 0)) / 324)
+
+        # REDA
+        alg_str = 'filtered_reda'
+        env_str = 'real_power_constellation_env'
+        load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed952807856_2024-05-15 21:26:29.301905'
+        reda_assigns, reda_val, reda_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+
+        reda_sat_ps.append(np.sum(np.where(reda_ps > 0, 1, 0)) / 324)
+
+
+
+
+    # Define the data
+    categories = ['Category 1', 'Category 2', 'Category 3']
+    bars_per_category = 5
+    data = np.array([[0, 252.187, 157.54, 0, 0], [4, 5, 6, 0, 0], [7, 8, 9, 0, 0]])  # Replace with your data
+    error = np.array([[0, 3.539, 65.261, 0, 0], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]])  # Replace with your actual standard deviations
+
+    # Set the width of each bar and the spacing between categories
+    bar_width = 0.25
+    category_spacing = np.arange(len(categories))
+
+    # Create the figure and axis
+    fig, ax = plt.subplots()
+
+    labels = ["REDA", "IQL", "IPPO", "HAAL", r"$\alpha(\hat{\beta}(s))$"]
+    colors = ['purple', 'blue', 'red', 'green', 'gray']
+    # Plot the bars and error bars for each category
+    for i in range(bars_per_category):
+        ax.bar(category_spacing + i * bar_width, data[:, i], bar_width, 
+            yerr=error[:, i], capsize=5, label=labels[i], color=colors[i])
+
+    # Set the x-axis tick positions and labels
+    ax.set_xticks(category_spacing + bar_width * (bars_per_category - 1) / 2)
+    ax.set_xticklabels(categories)
+
+    # Add a legend
+    ax.legend()
+
+    # Add labels and title
+    ax.set_ylabel('Value')
+    ax.set_title('Bar Chart with Error Bars')
+
+    plt.tight_layout()
+    plt.show()
+
 
 if __name__ == "__main__":
-    large_real_test()
+    qual_perf_compare()
