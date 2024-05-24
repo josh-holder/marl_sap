@@ -86,7 +86,9 @@ def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=
     actions = exp.result[0]
     assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in actions]
 
-    return assigns, val
+    ps = exp.result[2]
+
+    return assigns, val, ps
 
 def mock_constellation_test():
     n = 10
@@ -490,7 +492,7 @@ def large_real_power_test():
     print('HAAL:', haal_val)
     print('HAAL L=1:', haal1_val)
 
-def large_real_test():
+def large_real_power_test():
     num_planes = 18
     num_sats_per_plane = 18
     n = num_planes * num_sats_per_plane
@@ -520,7 +522,7 @@ def large_real_test():
     print('HAAL:', total_haal / num_tests)
     print('HAA:', total_haa / num_tests)
 
-def qual_perf_compare():
+def large_real_test():
     num_planes = 18
     num_sats_per_plane = 18
     n = num_planes * num_sats_per_plane
@@ -529,63 +531,321 @@ def qual_perf_compare():
     L = 3
     lambda_ = 0.5
 
-    reda_sat_ps = []
-    iql_sat_ps = []
-    haal_sat_ps = []
-    haa_sat_ps = []
-    ippo_sat_ps = []
+    N = 10
+    M = 10
 
-    for _ in range(1):
-        const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
-        sat_prox_mat = const.get_proximities_for_random_tasks(m)
-        explicit_dict_items = {
-            'env_args': {'sat_prox_mat': sat_prox_mat,
-                        'graphs': const.graphs,
-                        'T': T,
-                        }
-        }
+    total_haal = 0
+    total_haa = 0
 
-        # REDA
-        alg_str = 'filtered_reda'
-        env_str = 'real_power_constellation_env'
-        load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed952807856_2024-05-15 21:26:29.301905'
-        reda_assigns, reda_val, reda_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+    num_tests = 5
+    for _ in range(num_tests):
+        print("TEST ",_)
+        env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_)
+        env.reset()
+        
+        SimpleAssignEnv(env.sat_prox_mat, None, lambda_)
 
-        reda_sat_ps.append(np.sum(np.where(reda_ps > 0, 1, 0)) / 324)
+        haal3_assigns, haal3_val = test_classic_algorithms('haal_selector', 'dictator_env', env.sat_prox_mat, verbose=True)
+        total_haal += haal3_val
 
-        # IQL
-        alg_str = 'filtered_iql'
-        env_str = 'real_power_constellation_env'
-        load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_iql_seed814515160_2024-05-17 01:23:22.125853'
-        iql_assigns, iql_val, iql_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+        haa_assigns, haa_val = test_classic_algorithms('haa_selector', 'dictator_env', env.sat_prox_mat)
+        total_haa += haa_val
+    
+    print('HAAL:', total_haal / num_tests)
+    print('HAA:', total_haa / num_tests)
 
-        iql_sat_ps.append(np.sum(np.where(iql_ps > 0, 1, 0)) / 324)
+def calc_handovers_generically(assignments, init_assign=None, benefit_info=None):
+    """
+    Calculate the number of handovers generically, without assuming that the handover penalty
+    is the generic handover penalty, as opposed to calc_value_num_handovers above.
+    """
+    n = assignments[0].shape[0]
+    m = assignments[0].shape[1]
+    T = len(assignments)
 
-        # REDA
-        alg_str = 'filtered_reda'
-        env_str = 'real_power_constellation_env'
-        load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed952807856_2024-05-15 21:26:29.301905'
-        reda_assigns, reda_val, reda_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+    #If T_trans is provided, then use it, otherwise just set it to 
+    try:
+        T_trans = benefit_info.T_trans
+    except AttributeError:
+        T_trans = np.ones((m,m)) - np.eye(m)
 
-        reda_sat_ps.append(np.sum(np.where(reda_ps > 0, 1, 0)) / 324)
+    num_handovers = 0
+    prev_assign = init_assign
+    for k in range(T):
+        if prev_assign is not None:
+            new_assign = assignments[k]
 
+            #iterate through agents
+            for i in range(n):
+                new_task_assigned = np.argmax(new_assign[i,:])
+                prev_task_assigned = np.argmax(prev_assign[i,:])
 
+                if prev_assign[i,new_task_assigned] == 0 and T_trans[prev_task_assigned,new_task_assigned] == 1:
+                    num_handovers += 1
+        
+        prev_assign = assignments[k]
 
+    return num_handovers
+
+def calc_pct_conflicts(assignments):
+    T = len(assignments)
+    n = assignments[0].shape[0]
+    m = assignments[0].shape[1]
+
+    pct_conflicts = []
+    for k in range(T):
+        num_agents_w_conflicts = 0
+        for i in range(n):
+            assigned_task = np.argmax(assignments[k][i,:])
+            if np.sum(assignments[k][:,assigned_task]) > 1:
+                num_agents_w_conflicts += 1
+        
+        pct_conflicts.append(num_agents_w_conflicts / n)
+
+    return pct_conflicts
+
+def calc_pass_statistics(benefits, assigns=None):
+    """
+    Given a benefit array returns various statistics about the satellite passes over tasks.
+
+    Note that we define a satellite pass as the length of time a satellite
+    can obtain non-zero benefit for completing a given task.
+
+    Specifically:
+     - avg_pass_len: the average length of time a satellite is in view of a single task
+            (even if the satellite is not assigned to the task)
+     - avg_pass_ben: the average benefits that would be yielded for a satellite being
+            assigned to a task for the whole time it is in view
+
+    IF assigns is provided, then we also calculate:
+     - avg_ass_len: the average length of time a satellite is assigned to the same task
+            (only counted when the task the satellite is completing has nonzero benefit)
+    """
+    n = benefits.shape[0]
+    m = benefits.shape[1]
+    T = benefits.shape[2]
+
+    pass_lens = []
+    pass_bens = []
+    task_assign_len = []
+    for j in range(m):
+        for i in range(n):
+            pass_started = False
+            task_assigned = False
+            assign_len = 0
+            pass_len = 0
+            pass_ben = 0
+            for k in range(T):
+                this_pass_assign_lens = []
+                if benefits[i,j,k] > 0:
+                    if not pass_started:
+                        pass_started = True
+                    pass_len += 1
+                    pass_ben += benefits[i,j,k]
+
+                    if assigns is not None and assigns[k][i,j] == 1:
+                        if not task_assigned: task_assigned = True
+                        assign_len += 1
+                    #If there are benefits and the task was previously assigned,
+                    #but is no longer, end the streak
+                    elif task_assigned:
+                        task_assigned = False
+                        this_pass_assign_lens.append(assign_len)
+                        assign_len = 0
+
+                elif pass_started and benefits[i,j,k] == 0:
+                    if task_assigned:
+                        this_pass_assign_lens.append(assign_len)
+                    pass_started = False
+                    task_assigned = False
+                    for ass_len in this_pass_assign_lens:
+                        task_assign_len.append(ass_len)
+                    this_pass_assign_lens = []
+                    pass_lens.append(pass_len)
+                    pass_bens.append(pass_ben)
+                    pass_len = 0
+                    pass_ben = 0
+                    assign_len = 0
+    
+    avg_pass_len = sum(pass_lens) / len(pass_lens)
+    avg_pass_ben = sum(pass_bens) / len(pass_bens)
+
+    if assigns is not None:
+        avg_ass_len = sum(task_assign_len) / len(task_assign_len)
+        return avg_pass_len, avg_pass_ben, avg_ass_len
+    else:
+        return avg_pass_len, avg_pass_ben
+
+def qual_perf_compare():
+    # num_planes = 18
+    # num_sats_per_plane = 18
+    # n = num_planes * num_sats_per_plane
+    # m = 450
+    # T = 90
+    # L = 3
+    # lambda_ = 0.5
+
+    # reda_sat_ps = []
+    # iql_sat_ps = []
+    # haal_sat_ps = []
+    # haa_sat_ps = []
+    # ippo_sat_ps = []
+
+    # tot_iql_conflicts = []
+    # tot_ippo_conflicts = []
+
+    # reda_ass_len = []
+    # iql_ass_len = []
+    # ippo_ass_len = []
+    # haal_ass_len = []
+    # haa_ass_len = []
+
+    # for _ in range(5):
+    #     print(_)
+    #     const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T)
+    #     sat_prox_mat = const.get_proximities_for_random_tasks(m)
+    #     explicit_dict_items = {
+    #         'env_args': {'sat_prox_mat': sat_prox_mat,
+    #                     'graphs': const.graphs,
+    #                     'T': T,
+    #                     }
+    #     }
+
+    #     # REDA
+    #     alg_str = 'filtered_reda'
+    #     env_str = 'real_power_constellation_env'
+    #     load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed952807856_2024-05-15 21:26:29.301905'
+    #     reda_assigns, reda_val, reda_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+
+    #     reda_sat_ps.append(np.sum(np.where(reda_ps > 0, 1, 0)) / 324)
+
+    #     _, _, reda_al = calc_pass_statistics(sat_prox_mat, reda_assigns)
+    #     print("REDA ASS LEN", reda_al)
+    #     print(np.sum(np.where(reda_ps > 0, 1, 0)) / 324)
+    #     reda_ass_len.append(reda_al)
+
+    #     # IQL
+    #     alg_str = 'filtered_iql'
+    #     env_str = 'real_power_constellation_env'
+    #     load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_iql_seed814515160_2024-05-17 01:23:22.125853'
+    #     iql_assigns, iql_val, iql_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+
+    #     iql_sat_ps.append(np.sum(np.where(iql_ps > 0, 1, 0)) / 324)
+
+    #     tot_iql_conflicts.extend(calc_pct_conflicts(iql_assigns))
+
+    #     _, _, iql_al = calc_pass_statistics(sat_prox_mat, iql_assigns)
+    #     print("IQL ASS LEN", iql_al)
+    #     print(np.sum(np.where(iql_ps > 0, 1, 0)) / 324)
+    #     print(np.mean(calc_pct_conflicts(iql_assigns)))
+    #     iql_ass_len.append(iql_al)
+
+    #     # IPPO
+    #     alg_str = 'filtered_ippo'
+    #     env_str = 'real_power_constellation_env'
+    #     load_path = '/Users/joshholder/code/marl_sap/results/models/ippo'
+    #     ippo_assigns, ippo_val, ippo_ps = test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items, verbose=False)
+
+    #     tot_ippo_conflicts.extend(calc_pct_conflicts(ippo_assigns))
+
+    #     _, _, ippo_al = calc_pass_statistics(sat_prox_mat, ippo_assigns)
+    #     print("IPPO ASS LEN", ippo_al)
+    #     print(np.sum(np.where(ippo_ps > 0, 1, 0)) / 324)
+    #     print(np.mean(calc_pct_conflicts(ippo_assigns)))
+    #     ippo_ass_len.append(ippo_al)
+
+    #     ippo_sat_ps.append(np.sum(np.where(ippo_ps > 0, 1, 0)) / 324)
+
+    #     haal3_assigns, haal3_val, haal_ps = test_classic_algorithms('haal_selector', env_str, sat_prox_mat, verbose=True)
+    #     haal_sat_ps.append(np.sum(np.where(haal_ps > 0, 1, 0)) / 324)
+
+    #     _, _, haal_al = calc_pass_statistics(sat_prox_mat, haal3_assigns)
+    #     print("HAAL ASS LEN", haal_al)
+    #     print(np.sum(np.where(haal_ps > 0, 1, 0)) / 324)
+    #     haal_ass_len.append(haal_al)
+
+    #     haa_assigns, haa_val, haa_ps = test_classic_algorithms('haa_selector', env_str, sat_prox_mat)
+    #     haa_sat_ps.append(np.sum(np.where(haa_ps > 0, 1, 0)) / 324)
+
+    #     _, _, haa_al = calc_pass_statistics(sat_prox_mat, haa_assigns)
+    #     print("HAA ASS LEN", haa_al)
+    #     print(np.sum(np.where(haa_ps > 0, 1, 0)) / 324)
+    #     haa_ass_len.append(haa_al)
+
+    # iql_mean_conflicts = np.mean(np.array(tot_iql_conflicts))
+    # ippo_mean_conflicts = np.mean(np.array(tot_ippo_conflicts))
+
+    # iql_std_conflicts = np.std(np.array(tot_iql_conflicts))
+    # ippo_std_conflicts = np.std(np.array(tot_ippo_conflicts))
+
+    # print(iql_mean_conflicts, ippo_mean_conflicts)
+    # print(iql_std_conflicts, ippo_std_conflicts)
+
+    # reda_mean_ps = np.mean(np.array(reda_sat_ps))
+    # iql_mean_ps = np.mean(np.array(iql_sat_ps))
+    # haal_mean_ps = np.mean(np.array(haal_sat_ps))
+    # haa_mean_ps = np.mean(np.array(haa_sat_ps))
+    # ippo_mean_ps = np.mean(np.array(ippo_sat_ps))
+
+    # reda_std_ps = np.std(np.array(reda_sat_ps))
+    # iql_std_ps = np.std(np.array(iql_sat_ps))
+    # haal_std_ps = np.std(np.array(haal_sat_ps))
+    # haa_std_ps = np.std(np.array(haa_sat_ps))
+    # ippo_std_ps = np.std(np.array(ippo_sat_ps))
+    # print(reda_mean_ps, iql_mean_ps, haal_mean_ps, haa_mean_ps, ippo_mean_ps)
+    # print(reda_std_ps, iql_std_ps, haal_std_ps, haa_std_ps, ippo_std_ps)
+
+    # reda_mean_al = np.mean(np.array(reda_ass_len))
+    # iql_mean_al = np.mean(np.array(iql_ass_len))
+    # haal_mean_al = np.mean(np.array(haal_ass_len))
+    # haa_mean_al = np.mean(np.array(haa_ass_len))
+    # ippo_mean_al = np.mean(np.array(ippo_ass_len))
+
+    # reda_std_al = np.std(np.array(reda_ass_len))
+    # iql_std_al = np.std(np.array(iql_ass_len))
+    # haal_std_al = np.std(np.array(haal_ass_len))
+    # haa_std_al = np.std(np.array(haa_ass_len))
+    # ippo_std_al = np.std(np.array(ippo_ass_len))
+    # print(reda_mean_al, iql_mean_al, haal_mean_al, haa_mean_al, ippo_mean_al)
+    # print(reda_std_al, iql_std_al, haal_std_al, haa_std_al, ippo_std_al)
+
+    iql_mean_conflicts = 0.7727377560710895 
+    ippo_mean_conflicts = 0.7668294668294668
+    iql_std_conflicts = 0.05217196313302425
+    ippo_std_conflicts = 0.03738215222644939
+
+    power_means = np.array([0.9604938271604938, 0.888888888888889, 0.7333333333333334, 0.001, 0.001])
+    power_stds = np.array([0.01672372491869637, 0.01892556755155048, 0.10746060836535165, 0, 0])
+
+    al_means = np.array([1.4324952428228677, 1.364916387740726, 1.185541216131914, 3.5774124325688197, 3.1079990196318845])
+    al_stds = np.array([0.20891323851433166, 0.14792545867912268, 0.04760254420421542, 0.08361701895022966, 0.03070397013377513])
 
     # Define the data
-    categories = ['Category 1', 'Category 2', 'Category 3']
+    categories = ['% of Sats with no \n charge at k=100', '% Sats in Conflict', 'Avg. # Steps Assigned\n to same task (normalized)']
     bars_per_category = 5
-    data = np.array([[0, 252.187, 157.54, 0, 0], [4, 5, 6, 0, 0], [7, 8, 9, 0, 0]])  # Replace with your data
-    error = np.array([[0, 3.539, 65.261, 0, 0], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]])  # Replace with your actual standard deviations
+    data = np.array([1-power_means, [0.001, iql_mean_conflicts, ippo_mean_conflicts, 0.001, 0.001], al_means/max(al_means)])  # Replace with your data
+    error = np.array([power_stds, [0, iql_std_conflicts, ippo_std_conflicts, 0, 0], al_stds/max(al_means)])  # Replace with your actual standard deviations
 
     # Set the width of each bar and the spacing between categories
     bar_width = 0.25
-    category_spacing = np.arange(len(categories))
+    category_spacing = np.arange(len(categories))*1.5
+
+    SMALL_SIZE = 8
+    MEDIUM_SIZE = 12
+    BIGGER_SIZE = 14
+
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
     # Create the figure and axis
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10.3, 5))
 
-    labels = ["REDA", "IQL", "IPPO", "HAAL", r"$\alpha(\hat{\beta}(s))$"]
+    labels = ["REDA (ours)", "IQL", "IPPO", "HAAL", r"$\alpha(\hat{\beta}(s))$"]
     colors = ['purple', 'blue', 'red', 'green', 'gray']
     # Plot the bars and error bars for each category
     for i in range(bars_per_category):
@@ -600,10 +860,9 @@ def qual_perf_compare():
     ax.legend()
 
     # Add labels and title
-    ax.set_ylabel('Value')
-    ax.set_title('Bar Chart with Error Bars')
 
     plt.tight_layout()
+    plt.savefig('qual_perf_compare.pdf')
     plt.show()
 
 
