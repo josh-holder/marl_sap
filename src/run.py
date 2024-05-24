@@ -183,32 +183,35 @@ def run_sequential(args, logger):
         timesteps = []
         timestep_to_load = 0
 
-        if not os.path.isdir(args.checkpoint_path):
+        skip_load = False
+        checkpoint_path = os.path.join('/gscratch/socialrl/josh_holder/marl_sap/results/models', args.checkpoint_path)
+        if not os.path.isdir(checkpoint_path):
             logger.console_logger.info(
-                "Checkpoint directory {} doesn't exist".format(args.checkpoint_path)
+                "Checkpoint directory {} doesn't exist, skipping checkpoint load".format(checkpoint_path)
             )
-            return
+            skip_load = True
 
-        # Go through all files in args.checkpoint_path
-        for name in os.listdir(args.checkpoint_path):
-            full_name = os.path.join(args.checkpoint_path, name)
-            # Check if they are dirs the names of which are numbers
-            if os.path.isdir(full_name) and name.isdigit():
-                timesteps.append(int(name))
+        if not skip_load:
+            # Go through all files in args.checkpoint_path
+            for name in os.listdir(checkpoint_path):
+                full_name = os.path.join(checkpoint_path, name)
+                # Check if they are dirs the names of which are numbers
+                if os.path.isdir(full_name) and name.isdigit():
+                    timesteps.append(int(name))
 
-        if args.load_step == 0:
-            # choose the max timestep
-            timestep_to_load = max(timesteps)
-        else:
-            # choose the timestep closest to load_step
-            timestep_to_load = min(timesteps, key=lambda x: abs(x - args.load_step))
+            if args.load_step == 0:
+                # choose the max timestep
+                timestep_to_load = max(timesteps)
+            else:
+                # choose the timestep closest to load_step
+                timestep_to_load = min(timesteps, key=lambda x: abs(x - args.load_step))
 
-        model_path = os.path.join(args.checkpoint_path, str(timestep_to_load))
+            model_path = os.path.join(checkpoint_path, str(timestep_to_load))
 
-        logger.console_logger.info("Loading model from {}".format(model_path))
-        learner.load_models(model_path)
-        if use_bc: bc_learner.load_models(model_path)
-        runner.t_env = timestep_to_load
+            logger.console_logger.info("Loading model from {}".format(model_path))
+            learner.load_models(model_path)
+            if use_bc: bc_learner.load_models(model_path)
+            runner.t_env = timestep_to_load
 
     # ~~~~~~~~~~~~~~~~ EVALUATE IF DESIRED (skip the rest of training if so) ~~~~~~~~~~~~~~~~
     if args.evaluate or args.save_replay:
@@ -294,10 +297,13 @@ def run_sequential(args, logger):
             or model_save_time == 0
         ):
             model_save_time = runner.t_env
-            save_path = os.path.join(
-                args.local_results_path, "models", args.unique_token, str(runner.t_env)
-            )
+            # save_path = os.path.join(
+            #     args.local_results_path, "models", args.unique_token, str(runner.t_env)
+            # )
             # "results/models/{}".format(unique_token)
+            save_path = os.path.join(
+                args.local_results_path, "models", args.wandb_run_name, str(runner.t_env)
+            )
             os.makedirs(save_path, exist_ok=True)
             logger.console_logger.info("Saving models to {}".format(save_path))
 
@@ -357,8 +363,11 @@ def run_offline_rl_pretraining(args, logger, runner, buffer, learner,
             or model_save_time == 0
         ):
             model_save_time = runner.t_env
+            # save_path = os.path.join(
+            #     args.local_results_path, "models", args.unique_token, str(runner.t_env)
+            # )
             save_path = os.path.join(
-                args.local_results_path, "models", args.unique_token, str(runner.t_env)
+                args.local_results_path, "models", args.wandb_run_name, str(runner.t_env)
             )
             os.makedirs(save_path, exist_ok=True)
             logger.console_logger.info("Saving models to {}".format(save_path))
@@ -419,8 +428,11 @@ def run_behavior_cloning_pretraining(args, logger, runner, buffer, learner,
             or model_save_time == 0
         ):
             model_save_time = runner.t_env
+            # save_path = os.path.join(
+            #     args.local_results_path, "models", args.unique_token, str(runner.t_env)
+            # )
             save_path = os.path.join(
-                args.local_results_path, "models", args.unique_token, str(runner.t_env)
+                args.local_results_path, "models", args.wandb_run_name, str(runner.t_env)
             )
             os.makedirs(save_path, exist_ok=True)
             logger.console_logger.info("Saving models to {}".format(save_path))
