@@ -864,7 +864,7 @@ def large_real_test():
     num_tests = 5
     for _ in range(num_tests):
         print("TEST ",_)
-        env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_,
+        env = RealConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_,
                                         task_prios=np.ones(m))
         env.reset()
         
@@ -979,5 +979,34 @@ def large_real_test():
     plt.savefig('compare_reda_on_nopower.pdf')
     plt.show()
 
+def very_large_test():
+    env_str = "real_power_constellation_env"
+    num_planes = 40
+    num_sats_per_plane = 25
+    n = num_planes * num_sats_per_plane
+    m = 1000
+    T = 100
+    L = 3
+    N = 10
+    M = 10
+    lambda_ = 0.5
+    init_assign = np.zeros((n,m))
+    init_assign[:n, :n] = np.eye(n)
+
+    env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_,
+                                        task_prios=np.ones(m))
+    env.reset()
+
+    load_path = '/Users/joshholder/code/marl_sap/results/models/filtered_reda_seed952807856_2024-05-15 21:26:29.301905'
+    reda_assigns, reda_val = test_rl_model('filtered_reda', env_str, load_path, env.sat_prox_mat, verbose=False)
+    # _, _, reda_al = calc_pass_statistics(env.sat_prox_mat, reda_assigns)
+    print(reda_val)
+
+    nha_assigns, nha_val = test_classic_algorithms('haa_selector', env_str, env.sat_prox_mat, verbose=False)
+    print(nha_val)
+
+    haal_assigns, haal_val = test_classic_algorithms('haal_selector', env_str, env.sat_prox_mat, verbose=False)
+    print(haal_val)
+
 if __name__ == "__main__":
-    large_real_test()
+    very_large_test()
