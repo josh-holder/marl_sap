@@ -59,7 +59,8 @@ def run(_run, _config, _log):
 
     # Run and train
     if args.evaluate:
-        actions, reward, ps = run_sequential(args=args, logger=logger)
+        # actions, reward, ps = run_sequential(args=args, logger=logger)
+        actions, reward = run_sequential(args=args, logger=logger)
     else:
         run_sequential(args=args, logger=logger)
 
@@ -82,7 +83,7 @@ def run(_run, _config, _log):
     # Making sure framework really exits
     # os._exit(os.EX_OK)
     if args.evaluate: 
-        return actions, reward, ps
+        return actions, reward, #ps
 
 def evaluate_sequential(args, runner):
     for _ in range(args.test_nepisode):
@@ -91,7 +92,7 @@ def evaluate_sequential(args, runner):
     episode_actions = batch.data.transition_data['actions'][0,:,:,0]
     episode_reward = batch.data.transition_data['rewards'].sum()
 
-    power_states = batch.data.transition_data['power_states'][0,-1,:]
+    # power_states = batch.data.transition_data['power_states'][0,-1,:]
     # episode_power_states = batch.data.transition_data['power_states']
 
     if args.save_replay:
@@ -100,7 +101,7 @@ def evaluate_sequential(args, runner):
     runner.close_env()
 
     #Return the actions taken by agents over the course of the episode
-    return episode_actions, episode_reward, power_states
+    return episode_actions, episode_reward, #power_states
 
 
 def run_sequential(args, logger):
@@ -216,11 +217,12 @@ def run_sequential(args, logger):
     # ~~~~~~~~~~~~~~~~ EVALUATE IF DESIRED (skip the rest of training if so) ~~~~~~~~~~~~~~~~
     if args.evaluate or args.save_replay:
         runner.log_train_stats_t = runner.t_env
-        actions, reward, ps = evaluate_sequential(args, runner)
+        # actions, reward, ps = evaluate_sequential(args, runner)
+        actions, reward = evaluate_sequential(args, runner)
         logger.log_stat("episode", runner.t_env, runner.t_env)
         logger.print_recent_stats()
         logger.console_logger.info("Finished Evaluation")
-        return actions, reward, ps
+        return actions, reward, #ps
 
     # ~~~~~~~~~~~~~~~ COMPLETE PRETRAINING (BC or offline RL) IF DESIRED ~~~~~~~~~~~~~~~
     episode = 0

@@ -36,6 +36,7 @@ def test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items
         'test_nepisode=1',
         'evaluate=True',
         'use_offline_dataset=False',
+        'buffer_size=1'
         ]
     if explicit_dict_items is None:
         explicit_dict_items = {
@@ -53,9 +54,9 @@ def test_rl_model(alg_str, env_str, load_path, sat_prox_mat, explicit_dict_items
     actions = exp.result[0]
     assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in actions]
 
-    ps = exp.result[2]
+    # ps = exp.result[2]
     
-    return assigns, val, ps
+    return assigns, val, #ps
 
 def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=None, verbose=False):
     params = [
@@ -67,7 +68,8 @@ def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=
         'evaluate=True',
         'use_offline_dataset=False',
         'jumpstart_evaluation_epsilon=1',
-        f'jumpstart_action_selector=\"{alg_str}\"'
+        f'jumpstart_action_selector=\"{alg_str}\"',
+        'buffer_size=1'
         ]
     if explicit_dict_items is None:
         explicit_dict_items = {
@@ -86,9 +88,9 @@ def test_classic_algorithms(alg_str, env_str, sat_prox_mat, explicit_dict_items=
     actions = exp.result[0]
     assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in actions]
 
-    ps = exp.result[2]
+    # ps = exp.result[2]
 
-    return assigns, val, ps
+    return assigns, val, #ps
 
 def mock_constellation_test():
     n = 10
@@ -513,40 +515,8 @@ def large_real_power_test():
         env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_)
         env.reset()
         
-        haal3_assigns, haal3_val = test_classic_algorithms('haal_selector', 'dictator_env', env.sat_prox_mat, verbose=True)
-        total_haal += haal3_val
-
-        haa_assigns, haa_val = test_classic_algorithms('haa_selector', 'dictator_env', env.sat_prox_mat)
-        total_haa += haa_val
-    
-    print('HAAL:', total_haal / num_tests)
-    print('HAA:', total_haa / num_tests)
-
-def large_real_test():
-    num_planes = 18
-    num_sats_per_plane = 18
-    n = num_planes * num_sats_per_plane
-    m = 450
-    T = 90
-    L = 3
-    lambda_ = 0.5
-
-    N = 10
-    M = 10
-
-    total_haal = 0
-    total_haa = 0
-
-    num_tests = 5
-    for _ in range(num_tests):
-        print("TEST ",_)
-        env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_)
-        env.reset()
-        
-        SimpleAssignEnv(env.sat_prox_mat, None, lambda_)
-
-        haal3_assigns, haal3_val = test_classic_algorithms('haal_selector', 'dictator_env', env.sat_prox_mat, verbose=True)
-        total_haal += haal3_val
+        haal_assigns, haal_val = test_classic_algorithms('haal_selector', 'dictator_env', env.sat_prox_mat, verbose=True)
+        total_haal += haal_val
 
         haa_assigns, haa_val = test_classic_algorithms('haa_selector', 'dictator_env', env.sat_prox_mat)
         total_haa += haa_val
@@ -756,10 +726,10 @@ def qual_perf_compare():
 
     #     ippo_sat_ps.append(np.sum(np.where(ippo_ps > 0, 1, 0)) / 324)
 
-    #     haal3_assigns, haal3_val, haal_ps = test_classic_algorithms('haal_selector', env_str, sat_prox_mat, verbose=True)
+    #     haal_assigns, haal_val, haal_ps = test_classic_algorithms('haal_selector', env_str, sat_prox_mat, verbose=True)
     #     haal_sat_ps.append(np.sum(np.where(haal_ps > 0, 1, 0)) / 324)
 
-    #     _, _, haal_al = calc_pass_statistics(sat_prox_mat, haal3_assigns)
+    #     _, _, haal_al = calc_pass_statistics(sat_prox_mat, haal_assigns)
     #     print("HAAL ASS LEN", haal_al)
     #     print(np.sum(np.where(haal_ps > 0, 1, 0)) / 324)
     #     haal_ass_len.append(haal_al)
@@ -865,6 +835,149 @@ def qual_perf_compare():
     plt.savefig('qual_perf_compare.pdf')
     plt.show()
 
+def large_real_test():
+    env_str = "real_constellation_env"
+    num_planes = 18
+    num_sats_per_plane = 18
+    n = num_planes * num_sats_per_plane
+    m = 450
+    T = 100
+    L = 3
+    lambda_ = 0.5
+    init_assign = np.zeros((n,m))
+    init_assign[:n, :n] = np.eye(n)
+
+    N = 10
+    M = 10
+
+    total_haal = []
+    total_haa = []
+    total_old_haal = []
+    total_reda_val = []
+    total_greedy_val = []
+
+    haal_als = []
+    haa_als = []
+    reda_als = []
+    greedy_als = []
+
+    num_tests = 5
+    for _ in range(num_tests):
+        print("TEST ",_)
+        env = RealPowerConstellationEnv(num_planes, num_sats_per_plane, m, T, N, M, L, lambda_,
+                                        task_prios=np.ones(m))
+        env.reset()
+        
+        old_env = SimpleAssignEnv(env.sat_prox_mat, init_assign, L, lambda_)
+
+        old_haal_assigns, old_haal_val = solve_w_haal(old_env, L, verbose=False)
+        total_old_haal.append(old_haal_val)
+
+        old_env.reset()
+        greedy_assigns, greedy_val = solve_greedily(old_env)
+        total_greedy_val.append(greedy_val)
+        _, _, greedy_al = calc_pass_statistics(env.sat_prox_mat, greedy_assigns)
+        greedy_als.append(greedy_al)
+
+        haal_assigns, haal_val = test_classic_algorithms('haal_selector', env_str, env.sat_prox_mat, verbose=False)
+        total_haal.append(haal_val)
+        _, _, haal_al = calc_pass_statistics(env.sat_prox_mat, haal_assigns)
+        haal_als.append(haal_al)
+
+        haa_assigns, haa_val = test_classic_algorithms('haa_selector', env_str, env.sat_prox_mat)
+        total_haa.append(haa_val)
+        _, _, haa_al = calc_pass_statistics(env.sat_prox_mat, haa_assigns)
+        haa_als.append(haa_al)
+
+        load_path = '/Users/joshholder/code/marl_sap/results/models/large_real_no_power'
+        reda_assigns, reda_val = test_rl_model('filtered_reda', env_str, load_path, env.sat_prox_mat)
+        total_reda_val.append(reda_val)
+        _, _, reda_al = calc_pass_statistics(env.sat_prox_mat, reda_assigns)
+        reda_als.append(reda_al)
+
+    mean_haal_val = np.sum(total_haal) / num_tests
+    mean_haa_val = np.sum(total_haa) / num_tests
+    mean_old_haal_val = np.sum(total_old_haal) / num_tests
+    mean_reda_val = np.sum(total_reda_val) / num_tests
+    mean_greedy_val = np.sum(total_greedy_val) / num_tests
+
+    std_haal_val = np.std(total_haal)
+    std_haa_val = np.std(total_haa)
+    std_old_haal_val = np.std(total_old_haal)
+    std_reda_val = np.std(total_reda_val)
+    std_greedy_val = np.std(total_greedy_val)
+
+    mean_haal_al = np.sum(haal_als) / num_tests
+    mean_haa_al = np.sum(haa_als) / num_tests
+    mean_reda_al = np.sum(reda_als) / num_tests
+    mean_greedy_al = np.sum(greedy_als) / num_tests
+
+    std_haal_al = np.std(haal_als)
+    std_haa_al = np.std(haa_als)
+    std_reda_al = np.std(reda_als)
+    std_greedy_al = np.std(greedy_als)
+
+    print('HAAL:', mean_haal_val)
+    print('HAA:', mean_haa_val)
+    print('OLD HAAL:', mean_old_haal_val)
+    print('REDA:', mean_reda_val)
+    print('GREEDY:', mean_greedy_val)
+
+    print('HAAL std:', std_haal_val)
+    print('HAA std:', std_haa_val)
+    print('OLD HAAL std:', std_old_haal_val)
+    print('REDA std:', std_reda_val)
+    print('GREEDY std:', std_greedy_val)
+
+    print('HAAL AL:', mean_haal_al)
+    print('HAA AL:', mean_haa_al)
+    print('REDA AL:', mean_reda_al)
+    print('GREEDY AL:', mean_greedy_al)
+
+    print('HAAL AL std:', std_haal_al)
+    print('HAA AL std:', std_haa_al)
+    print('REDA AL std:', std_reda_al)
+    print('GREEDY AL std:', std_greedy_al)
+
+    score_data = [mean_haa_val, mean_greedy_val, mean_haal_val, mean_reda_val]
+    score_error = [std_haa_val, std_greedy_val, std_haal_val, std_reda_val]
+
+    SMALL_SIZE = 8
+    MEDIUM_SIZE = 12
+    BIGGER_SIZE = 14
+
+    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
+    plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+    fig, axes = plt.subplots(1,2, figsize=(10,5))
+
+    labels = [r"$\alpha(\hat{\beta}(s))$", "GA", "HAAL", "REDA"]
+    colors = ['gray', 'blue', 'green', 'purple']
+    # Plot the bars and error bars for each category
+    axes[0].bar(labels, score_data, 
+        yerr=score_error, capsize=5, color=colors)
+
+    al_data = [mean_haa_al, mean_greedy_al, mean_haal_al, mean_reda_al]
+    al_error = [std_haa_al, std_greedy_al, std_haal_al, std_reda_al]
+
+    axes[1].bar(labels, al_data, 
+        yerr=al_error, capsize=5, color=colors)
+
+    # Add labels and title
+    axes[0].set_xlabel('Value')
+    axes[0].set_ylabel('Value')
+
+    axes[1].set_xlabel('Avg. # Steps Assigned\n to same task')
+    axes[1].set_ylabel('# Steps')
+
+    plt.tight_layout()
+    plt.savefig('compare_reda_on_nopower.pdf')
+    plt.show()
 
 if __name__ == "__main__":
-    qual_perf_compare()
+    large_real_test()

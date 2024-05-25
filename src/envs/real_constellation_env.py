@@ -125,7 +125,8 @@ class RealConstellationEnv(Env):
             pass #if benefits are constant, do nothing because you should use the same prox matrix
 
         self.beta = self.sat_prox_mat[:,:,self.k:self.k+self.L] * self.task_prios
-        self.prev_assigns = np.random.choice(self.m, self.n, replace=False)
+        # self.prev_assigns = np.random.choice(self.m, self.n, replace=False)
+        self.prev_assigns = np.arange(self.n)
 
         self._obs = self._build_obs()
 
