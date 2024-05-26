@@ -65,7 +65,7 @@ class InterferenceConstellationEnv(Env):
 
         #default to having no option to change T_trans
 
-        self.beam_types = 3
+        self.beam_types = 7
         if task_prios is None or sat_freq_bands is None:
             self.constant_setup = False
             self.task_prios = np.random.choice([1,1,1,5], size=self.m, replace=True)
