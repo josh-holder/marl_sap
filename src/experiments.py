@@ -404,42 +404,6 @@ def haal_test():
     haal_assigns = [convert_central_sol_to_assignment_mat(n, m, a) for a in haal_actions]
     print('HAAL:', haal_val)
 
-def const_sim_speed_test():
-    num_planes = 10
-    num_sats_per_plane = 10
-    n = num_planes * num_sats_per_plane
-    m = 150
-    T = 90
-    L = 3
-    lambda_ = 0.5
-
-    N = 10
-    M = 10
-
-    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T, dt=63.76469*u.second)
-    ts = time.time()
-    sat_prox_mat = const.get_proximities_for_random_tasks(m, seed=42)
-    print('Time to generate proximities, new strat:', time.time() - ts)
-
-    ts = time.time()
-    const.timestep_offset = None
-    sat_prox_mat_old = const.get_proximities_for_random_tasks(m, seed=42)
-    print('Time to generate proximities, old strat:', time.time() - ts)
-
-    total_diff = 0
-    num_nonzero = 0
-    for i in range(n):
-        for j in range(n):
-            for k in range(T):
-                total_diff += abs(sat_prox_mat[i,j,k] - sat_prox_mat_old[i,j,k])
-                if sat_prox_mat[i,j,k] != 0 or sat_prox_mat_old[i,j,k] != 0:
-                    num_nonzero += 1
-    print("Avg diff", total_diff / num_nonzero)
-    print("max diff", np.max(np.abs(sat_prox_mat - sat_prox_mat_old)))
-
-    #ensure that matrices are the same
-    assert np.allclose(sat_prox_mat_old, sat_prox_mat)
-
 def large_real_power_test():
     num_planes = 18
     num_sats_per_plane = 18
@@ -981,10 +945,10 @@ def large_real_test():
 
 def very_large_test():
     env_str = "real_power_constellation_env"
-    num_planes = 40
-    num_sats_per_plane = 25
+    num_planes = 42
+    num_sats_per_plane = 24
     n = num_planes * num_sats_per_plane
-    m = 1000
+    m = n
     T = 100
     L = 3
     N = 10
@@ -1005,8 +969,71 @@ def very_large_test():
     nha_assigns, nha_val = test_classic_algorithms('haa_selector', env_str, env.sat_prox_mat, verbose=False)
     print(nha_val)
 
-    haal_assigns, haal_val = test_classic_algorithms('haal_selector', env_str, env.sat_prox_mat, verbose=False)
-    print(haal_val)
+def const_sim_speed_test():
+    num_planes = 18
+    num_sats_per_plane = 18
+    n = num_planes * num_sats_per_plane
+    m = 450
+    T = 100
+    L = 3
+    lambda_ = 0.5
+
+    N = 10
+    M = 10
+
+    ts = time.time()
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T, dt=63.76469*u.second, use_graphs=False)
+    print('Time to propagate orbits and generate graphs:', time.time() - ts)
+
+    sat_prox_mat = const.get_proximities_for_random_tasks(m, seed=42)
+
+
+    ts = time.time()
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T, dt=63.76469*u.second, use_graphs=True)
+    print('Time to generate proximities, old strat:', time.time() - ts)
+
+    const.propagate_orbits_and_generate_graphs(T, test=False)
+    
+    sat_prox_mat_old = const.get_proximities_for_random_tasks(m, seed=42)
+    
+    total_diff = 0
+    num_nonzero = 0
+    for i in range(n):
+        for j in range(m):
+            for k in range(T):
+                total_diff += abs(sat_prox_mat[i,j,k] - sat_prox_mat_old[i,j,k])
+                if sat_prox_mat[i,j,k] != 0 or sat_prox_mat_old[i,j,k] != 0:
+                    num_nonzero += 1
+    print("Avg diff", total_diff / num_nonzero)
+    print("max diff", np.max(np.abs(sat_prox_mat - sat_prox_mat_old)))
+
+    #ensure that matrices are the same
+    assert np.allclose(sat_prox_mat_old, sat_prox_mat)
+
+def inteference_const_test():
+    num_planes = 18
+    num_sats_per_plane = 18
+    n = num_planes * num_sats_per_plane
+    m = 450
+    T = 100
+    L = 3
+    lambda_ = 0.5
+
+    N = 10
+    M = 10
+
+    ts = time.time()
+    const = HighPerformanceConstellationSim(num_planes, num_sats_per_plane, T, dt=63.76469*u.second, use_graphs=False, inc=70)
+    print('Time to propagate orbits and generate graphs:', time.time() - ts)
+
+    ts = time.time()
+    sat_prox_mat = const.get_proximities_for_coverage_tasks()
+    print('Time to generate proximities:', time.time() - ts)
+
+    ts = time.time()
+    sat_prox_mat = const.get_proximities_for_random_tasks(m)
+    print('Time to generate proximities:', time.time() - ts)
+
 
 if __name__ == "__main__":
-    very_large_test()
+    inteference_const_test()

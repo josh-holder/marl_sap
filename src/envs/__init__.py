@@ -5,6 +5,7 @@ from envs.mock_constellation_env import MockConstellationEnv
 from envs.power_constellation_env import PowerConstellationEnv
 from envs.real_constellation_env import RealConstellationEnv
 from envs.real_power_constellation_env import RealPowerConstellationEnv
+from envs.interference_constellation_env import InterferenceConstellationEnv
 from envs.dictator_env import DictatorEnv
 import sys
 import os
@@ -25,6 +26,7 @@ REGISTRY["mock_constellation_env"] = partial(env_fn, env=MockConstellationEnv)
 REGISTRY["power_constellation_env"] = partial(env_fn, env=PowerConstellationEnv)
 REGISTRY["real_constellation_env"] = partial(env_fn, env=RealConstellationEnv)
 REGISTRY["real_power_constellation_env"] = partial(env_fn, env=RealPowerConstellationEnv)
+REGISTRY["interference_constellation_env"] = partial(env_fn, env=InterferenceConstellationEnv)
 REGISTRY["dictator_env"] = partial(env_fn, env=DictatorEnv)
 
 # if sys.platform == "linux":
